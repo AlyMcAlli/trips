@@ -993,7 +993,15 @@ const IMP_ERRORS = {
   unsupported_file:'Choose a photo, screenshot or PDF.',
   claude_unreachable:'Couldn’t reach Claude. Check your connection and try again.',
   claude_error:'Claude couldn’t read that one. Try again, or try a screenshot instead.',
-  no_result:'Claude couldn’t read that one. Try again, or try a screenshot instead.'
+  no_result:'Claude couldn’t read that one. Try again, or try a screenshot instead.',
+  bad_key:'The Anthropic API key in Vercel isn’t working. Create a new key at console.anthropic.com, replace ANTHROPIC_API_KEY in Vercel, then redeploy.',
+  no_credit:'Your Anthropic account is out of credit. Add credit at console.anthropic.com under Billing, then try again.',
+  model_unavailable:'Your Anthropic account can’t use the model the app asks for. Ask Claude to switch the app to a different model.',
+  rate_limited:'Too many tries in a row. Wait a minute and try again.',
+  busy:'Claude is busy right now. Wait a minute and try again.',
+  too_big:'That confirmation is too large. Try a screenshot of the important part instead.',
+  timeout:'That took too long. Try again, or paste just the part with the dates and times.',
+  server_error:'The app’s server hit a problem. In Vercel, open Logs and send Claude the error shown for /api/extract.'
 };
 async function runImport(){
   const t = trip(), I = S.imp; if(!t || !I) return;
@@ -1010,8 +1018,8 @@ async function runImport(){
     if(!S.imp) return;
     if(!r.ok){
       if(r.status === 401){ lsSet('mctrips-passcode', ''); I.needCode = true; }
-      const code = data.error || (r.status === 404 ? 'not_configured' : r.status === 413 ? 'too_big' : 'claude_error');
-      I.error = code === 'too_big' ? 'That file is too large. Try a smaller screenshot.' : (IMP_ERRORS[code] || IMP_ERRORS.claude_error);
+      const code = data.error || (r.status === 404 ? 'not_configured' : r.status === 413 ? 'too_big' : r.status === 504 ? 'timeout' : r.status >= 500 ? 'server_error' : 'claude_error');
+      I.error = (IMP_ERRORS[code] || IMP_ERRORS.claude_error) + (code === 'claude_error' && data.detail ? ` (Claude said: ${data.detail})` : '');
       I.stage = 'input'; return renderImport();
     }
     I.needCode = false;

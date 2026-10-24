@@ -1,5 +1,5 @@
 // Keeps the app working without a signal. Bump VERSION when the app changes.
-const VERSION = 'trips-v2';
+const VERSION = 'trips-v3';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
