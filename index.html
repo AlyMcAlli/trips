@@ -495,8 +495,11 @@ function renderBuilder(){
       ${hasTrips ? `<div><button class="linkbtn" data-act="wiz-cancel">‹ Back to my trips</button></div>` : ''}
       <h1>Plan a trip</h1>
       <p>Pick the basics. The app sets up the trip summary, a daily schedule and a packing list for each person.</p>
-      <p class="note">Got a trip file from family? <label class="linkbtn" for="importFile" style="cursor:pointer">Open it here</label></p>
     </div>
+    <section class="q"><h3>Someone sent you a trip?</h3>
+      ${pasteLinkForm('pasteLinkPlan')}
+      <p class="note" style="margin:0">Have a trip or backup file instead? <label class="linkbtn" for="importFile" style="cursor:pointer">Open it here</label></p>
+    </section>
     <section class="q"><h3><span class="qn">1</span>Land or sea?</h3>${choice('wiz-set','cruise',CH.cruise[0],CH.cruise[1],w.cruise)}</section>
     <section class="q"><h3><span class="qn">2</span>Domestic or international?</h3>${choice('wiz-set','intl',CH.intl[0],CH.intl[1],w.intl)}</section>
     <section class="q"><h3><span class="qn">3</span>Disney?</h3>${choice('wiz-set','disney',CH.disney[0],CH.disney[1],w.disney)}</section>
@@ -725,12 +728,13 @@ function renderSetup(t){
   </form>
   <section class="panel">
     <h3>Share & back up</h3>
-    <p class="note" style="margin:0">Trips are saved on this phone. Send the trip file to family so they can open it in their copy of the app. Send it again after you change plans; their packing checkmarks stay.</p>
+    <p class="note" style="margin:0">Trips are saved on this phone. Send this trip as a link: tapping it opens the trip in the app. Send a new link after you change plans; their packing checkmarks stay.</p>
     <div class="formrow">
       <button type="button" class="btn small primary" data-act="export-trip">Send this trip</button>
       <button type="button" class="btn small" data-act="export-all">Back up all trips</button>
-      <label class="btn small" for="importFile" style="cursor:pointer">Open a trip or backup file</label>
+      <label class="btn small" for="importFile" style="cursor:pointer">Open a backup file</label>
     </div>
+    ${pasteLinkForm('pasteLinkSetup')}
   </section>
   ${wr ? `<section class="panel">
     <h3>Make a copy</h3>
@@ -760,6 +764,11 @@ function render(){
   const sx = window.scrollX, sy = window.scrollY;
 
   let html = '';
+  if(S.linkBanner) html += `<div class="banner" style="display:flex;flex-direction:column;gap:8px">
+      <b>${esc(S.linkBanner.name)} is in the app.</b>
+      <span>To keep it on your home screen: tap <b>Copy trip link</b>, then Share → <b>Add to Home Screen</b>. Open the app from the new icon and paste the link into “Someone sent you a trip?”</span>
+      <div class="formrow"><button type="button" class="btn small primary" data-act="copy-link">Copy trip link</button><button type="button" class="btn small ghost" data-act="hide-banner">Done</button></div>
+    </div>`;
   const t = trip();
   if(!S.loaded) html += `<div class="emptystate"><h2>Loading…</h2></div>`;
   else if(S.view === 'new' || !t){
@@ -924,6 +933,8 @@ app.addEventListener('click', e => {
     const fresh = genDays({...tg, nights:clampNights(t.nights)});
     write(S.store.setDoc('trips/'+t.id, Object.assign(clone(S.trips[t.id]), {days:fresh}))).then(() => toast('Summary rebuilt')).catch(()=>{}); render(); return; }
   if(act === 'export-trip') return exportTrip();
+  if(act === 'copy-link' && S.linkBanner){ copyText(S.linkBanner.url).then(ok => toast(ok ? 'Trip link copied' : 'Couldn’t copy. Press and hold the address bar to copy it.')); return; }
+  if(act === 'hide-banner'){ S.linkBanner = null; render(); return; }
   if(act === 'dup-trip'){
     const src = clone(S.trips[t.id]), name = `${t.name || 'Trip'} (copy)`;
     const id = slug(name).slice(0,30) + '-' + rid();
@@ -959,6 +970,11 @@ app.addEventListener('change', e => {
 app.addEventListener('submit', e => {
   e.preventDefault();
   const f = e.target, t = trip(), v = id => (document.getElementById(id)?.value || '').trim();
+  if(f.dataset.form === 'paste-link'){
+    const input = f.querySelector('input'), code = linkCode(input.value);
+    if(!code){ toast('That doesn’t look like a trip link. Copy the whole link and try again.'); return; }
+    input.value = ''; openLink(code, false); return;
+  }
   if(f.dataset.form === 'add-item'){
     const trav = (t.travelers||[]).find(x => x.id === S.travelerId), name = v('addName'); if(!trav || !name) return;
     const [bag, cat] = v('addCat').split('::');
@@ -1168,9 +1184,69 @@ async function saveFile(name, obj, shareTitle){
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 function readStore(){ try { return JSON.parse(lsGet('mctrips-local-v2')) || {trips:{}, packing:{}}; } catch(e){ return {trips:{}, packing:{}}; } }
-function exportTrip(){
+const b64u = bytes => { let s = ''; for(let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
+const unb64u = str => { str = str.replace(/-/g,'+').replace(/_/g,'/'); while(str.length % 4) str += '='; const bin = atob(str); return Uint8Array.from(bin, c => c.charCodeAt(0)); };
+async function packData(obj){
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  if(typeof CompressionStream !== 'undefined'){
+    try { const st = new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return 'z.' + b64u(new Uint8Array(await new Response(st).arrayBuffer())); } catch(e){}
+  }
+  return 'j.' + b64u(raw);
+}
+async function unpackData(code){
+  const kind = code.slice(0, 1), body = code.slice(2);
+  let bytes = unb64u(body);
+  if(kind === 'z'){ const st = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')); bytes = new Uint8Array(await new Response(st).arrayBuffer()); }
+  else if(kind !== 'j') throw new Error('bad');
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+const linkCode = text => { const m = String(text || '').match(/#trip=([zj]\.[A-Za-z0-9_-]+)/); return m ? m[1] : (/^[zj]\.[A-Za-z0-9_-]{20,}$/.test(String(text||'').trim()) ? String(text).trim() : null); };
+function fingerprint(str){ let h = 5381; for(let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + str.length; }
+const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch(e){ return false; } };
+async function tripLink(t){
+  const code = await packData({app:'mctrips', kind:'trip', version:1, trips:{[t.id]:S.trips[t.id]}});
+  return location.origin + location.pathname + '#trip=' + code;
+}
+async function copyText(text){
+  try { await navigator.clipboard.writeText(text); return true; } catch(e){}
+  try { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly',''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch(e){ return false; }
+}
+async function exportTrip(){
   const t = trip(); if(!t) return;
-  saveFile(`${slug(t.name)}.trip.json`, {app:'mctrips', kind:'trip', version:1, trips:{[t.id]:S.trips[t.id]}}, t.name);
+  let url; try { url = await tripLink(t); } catch(e){ toast('Couldn’t make a link for this trip.'); return; }
+  const text = `${t.name || 'Our trip'}: tap the link to open it in the Trips app.`;
+  try { if(navigator.share){ await navigator.share({title:t.name || 'Trip', text, url}); return; } }
+  catch(e){ if(e && e.name === 'AbortError') return; }
+  toast(await copyText(url) ? 'Trip link copied. Paste it into a text or email.' : 'Couldn’t copy the link on this device.');
+}
+function pasteLinkForm(id){
+  return `<form class="formrow" data-form="paste-link" style="align-items:flex-end">
+    <div class="field" style="flex:2 1 220px"><label for="${id}">Paste a trip link</label><input id="${id}" data-keep placeholder="Paste the link someone sent you" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <button class="btn small primary" type="submit">Open trip</button></form>`;
+}
+async function importData(data, how){
+  if(!data || data.app !== 'mctrips' || !data.trips || typeof data.trips !== 'object'){ toast(how === 'link' ? 'That link isn’t a trip link.' : 'That file isn’t a trip file.'); return null; }
+  const ids = Object.keys(data.trips).filter(id => /^[A-Za-z0-9_\-.~:@+]+$/.test(id) && data.trips[id] && typeof data.trips[id] === 'object');
+  if(!ids.length){ toast('No trips found in that ' + (how === 'link' ? 'link.' : 'file.')); return null; }
+  for(const id of ids){ const t = data.trips[id]; t.days = t.days || {}; t.travelers = Array.isArray(t.travelers) ? t.travelers : []; await S.store.setDoc('trips/'+id, t); }
+  if(data.kind === 'backup' && data.packing && typeof data.packing === 'object'){
+    for(const [pid, p] of Object.entries(data.packing)) if(p && typeof p === 'object' && /^[A-Za-z0-9_\-.~:@+]+$/.test(pid)) await S.store.setDoc('packing/'+pid, p);
+  }
+  S.view = 'trip'; S.tripId = null; selectTrip(ids[0]); S.tab = 'summary'; render(); window.scrollTo(0,0);
+  toast(ids.length === 1 ? `Opened ${data.trips[ids[0]].name || 'trip'}` : `Restored ${plural(ids.length,'trip')}`);
+  return data.trips[ids[0]];
+}
+async function openLink(code, fromUrl){
+  let data;
+  try { data = await unpackData(code); } catch(e){ toast('That link is incomplete. Ask for it to be sent again.'); return; }
+  const fp = fingerprint(code);
+  let seen = []; try { seen = JSON.parse(lsGet('mctrips-links') || '[]'); } catch(e){}
+  if(fromUrl && seen.includes(fp)){ const id = data && data.trips && Object.keys(data.trips)[0]; if(id && S.trips[id]){ selectTrip(id); S.view = 'trip'; render(); } return; }
+  const t = await importData(data, 'link'); if(!t) return;
+  lsSet('mctrips-links', JSON.stringify(seen.concat(fp).slice(-30)));
+  if(fromUrl && !isStandalone() && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)){ S.linkBanner = {name:t.name || 'This trip', url:location.href}; render(); }
 }
 function exportAll(){
   const d = readStore(), n = Object.keys(d.trips||{}).length;
@@ -1181,25 +1257,20 @@ document.getElementById('importFile').addEventListener('change', async e => {
   const f = e.target.files && e.target.files[0]; e.target.value = ''; if(!f) return;
   let data;
   try { data = JSON.parse(await f.text()); } catch(err){ toast('That file isn’t a trip file.'); return; }
-  if(!data || data.app !== 'mctrips' || typeof data.trips !== 'object'){ toast('That file isn’t a trip file.'); return; }
-  const ids = Object.keys(data.trips).filter(id => /^[A-Za-z0-9_\-.~:@+]+$/.test(id) && data.trips[id] && typeof data.trips[id] === 'object');
-  for(const id of ids){ const t = data.trips[id]; t.days = t.days || {}; t.travelers = Array.isArray(t.travelers) ? t.travelers : []; await S.store.setDoc('trips/'+id, t); }
-  if(data.kind === 'backup' && data.packing && typeof data.packing === 'object'){
-    for(const [pid, p] of Object.entries(data.packing)) if(p && typeof p === 'object' && /^[A-Za-z0-9_\-.~:@+]+$/.test(pid)) await S.store.setDoc('packing/'+pid, p);
-  }
-  if(!ids.length){ toast('No trips found in that file.'); return; }
-  S.view = 'trip'; S.tripId = null; selectTrip(ids[0]); S.tab = 'summary'; render(); window.scrollTo(0,0);
-  toast(ids.length === 1 ? `Opened ${data.trips[ids[0]].name || 'trip'}` : `Restored ${plural(ids.length,'trip')}`);
+  importData(data, 'file');
 });
+window.addEventListener('hashchange', () => { const c = linkCode(location.hash); if(c) openLink(c, true); });
 
 /* ---------- boot ---------- */
 (function boot(){
   S.store = localStore();
   try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+  let first = true;
   S.store.watchTrips(o => {
     S.trips = o; S.loaded = true;
     if(!S.trips[S.tripId]) selectTrip(defaultTrip());
     render();
+    if(first){ first = false; const c = linkCode(location.hash); if(c) openLink(c, true); }
   });
   render();
   if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
