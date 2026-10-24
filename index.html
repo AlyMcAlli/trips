@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Trips</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<meta name="theme-color" content="#0A7680">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trips">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/* Layout: one-column phone app; boarding-pass header, tabs, luggage-tag bag headers. Week grid scrolls sideways on its own. */
+:root{
+  --bg:#EDF2F5; --surface:#FFFFFF; --sunk:#E3EAEF; --ink:#132235; --muted:#56677A; --line:#D3DDE5;
+  --accent:#0A7680; --accent-ink:#FFFFFF; --accent-soft:#D8EEEF;
+  --tag:#F0B23B; --tag-ink:#3A2904;
+  --done:#2B8A55; --warn:#B4541E;
+  --bag-personal:#0A7680; --bag-carryon:#C98A12; --bag-checked:#3D4F9E; --bag-wear:#B24A6B; --bag-car:#3F7D3A;
+  --f-display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body:"Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0D1520; --surface:#152130; --sunk:#101A27; --ink:#E5ECF2; --muted:#93A3B4; --line:#253548;
+  --accent:#40B7BE; --accent-ink:#04252A; --accent-soft:#163A43;
+  --tag:#E2A53A; --tag-ink:#2A1C02; --done:#4CC082; --warn:#E8915E;
+  --bag-personal:#40B7BE; --bag-carryon:#E2A53A; --bag-checked:#8C9CF0; --bag-wear:#E58AA8; --bag-car:#7FC478;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0D1520; --surface:#152130; --sunk:#101A27; --ink:#E5ECF2; --muted:#93A3B4; --line:#253548;
+  --accent:#40B7BE; --accent-ink:#04252A; --accent-soft:#163A43;
+  --tag:#E2A53A; --tag-ink:#2A1C02; --done:#4CC082; --warn:#E8915E;
+  --bag-personal:#40B7BE; --bag-carryon:#E2A53A; --bag-checked:#8C9CF0; --bag-wear:#E58AA8; --bag-car:#7FC478;
+  color-scheme:dark }
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);background:var(--bg)}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-tap-highlight-color:transparent;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:16px 48px}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1}
+.muted{color:var(--muted)}
+
+/* Boarding-pass header */
+.pass{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.pass-top{padding:16px 18px 14px;display:flex;flex-direction:column;gap:10px}
+.pass-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.pass h1{font-size:clamp(26px,6vw,36px);font-weight:800;letter-spacing:-.01em}
+.route{font-family:var(--f-mono);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.pass-stub{border-top:2px dashed var(--line);display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;padding:12px 18px 14px;background:var(--sunk)}
+.stub-lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.stub-val{font-family:var(--f-mono);font-weight:700;font-size:14px;min-width:0;overflow-wrap:anywhere}
+.status{font-family:var(--f-mono);font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;background:var(--tag);color:var(--tag-ink);white-space:nowrap}
+.status.now{background:var(--accent);color:var(--accent-ink)}
+.status.past{background:var(--sunk);color:var(--muted)}
+.tripsel{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tripsel select{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:100%}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.tab{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-weight:600;color:var(--muted);white-space:nowrap}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+
+.bar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:8px 12px;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--warn);border-color:var(--warn);background:transparent}
+.btn.small{padding:5px 9px;font-size:13px}
+.linkbtn{border:0;background:none;color:var(--accent);font-weight:600;padding:0}
+
+/* Itinerary */
+.days{display:flex;flex-direction:column;gap:12px}
+.day{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:grid;grid-template-columns:64px 1fr;scroll-margin-top:72px}
+.day.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.dstamp{border-right:2px dashed var(--line);padding:14px 6px;text-align:center;display:flex;flex-direction:column;gap:2px;align-items:center}
+.dstamp .dw{font-family:var(--f-mono);font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--muted)}
+.dstamp .dd{font-family:var(--f-mono);font-weight:700;font-size:17px}
+.dstamp .dn{font-size:11px;color:var(--muted)}
+.dbody{padding:12px 14px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.dhead{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.dhead h3{font-size:18px;font-weight:600}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.chip.dress{background:var(--accent-soft);color:var(--accent)}
+.chip.today{background:var(--accent);color:var(--accent-ink)}
+.events{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.ev{display:grid;grid-template-columns:76px 1fr auto;gap:10px;padding:8px 0;border-top:1px solid var(--line);align-items:start}
+.ev:first-child{border-top:0}
+.ev .t{font-family:var(--f-mono);font-size:13px;font-weight:700;padding-top:1px;font-variant-numeric:tabular-nums}
+.ev .what{min-width:0}
+.ev .lab{font-weight:600}
+.ev .notes{color:var(--muted);font-size:14px;white-space:pre-line;overflow-wrap:anywhere}
+.etype{font-family:var(--f-mono);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:6px}
+.etype.flight{color:var(--bag-checked)} .etype.ship{color:var(--accent)} .etype.hotel{color:var(--bag-carryon)} .etype.dining{color:var(--bag-wear)} .etype.activity{color:var(--bag-car)}
+.iconbtn{border:0;background:transparent;color:var(--muted);padding:4px 6px;border-radius:6px;font-size:13px;font-weight:600}
+.iconbtn:hover{background:var(--sunk);color:var(--ink)}
+.empty-day{color:var(--muted);font-size:14px}
+
+/* Week grid */
+.weekwrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.sgrid{display:grid;grid-template-columns:72px repeat(7,minmax(118px,1fr));min-width:900px}
+.sg-corner,.sg-head{position:sticky;top:0;z-index:2;background:var(--sunk);border-bottom:2px solid var(--line);padding:8px;min-width:0}
+.sg-corner{left:0;z-index:3;font-family:var(--f-mono);font-size:11px;font-weight:700;color:var(--muted);display:flex;align-items:flex-end}
+.sg-head{border:0;border-left:1px solid var(--line);border-bottom:2px solid var(--line);text-align:left;display:flex;flex-direction:column;gap:3px;align-items:flex-start;color:var(--ink)}
+.sg-head.today{background:var(--accent-soft)}
+.sg-head.out{opacity:.5}
+.sg-dow{font-family:var(--f-mono);font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--muted)}
+.sg-loc{font-weight:700;font-size:13px;line-height:1.2;text-transform:uppercase;letter-spacing:.02em}
+.sg-time{position:sticky;left:0;z-index:1;background:var(--surface);font-family:var(--f-mono);font-size:11px;color:var(--muted);padding:4px 8px;border-top:1px dotted var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sg-time.hr,.sg-cell.hr{border-top:1px solid var(--line)}
+.sg-time.hr{color:var(--ink);font-weight:700}
+.sg-cell{border-left:1px solid var(--line);border-top:1px dotted var(--line);min-height:26px;padding:2px 3px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.sg-cell.out{background:var(--sunk)}
+.sg-cell.today{background:color-mix(in srgb, var(--accent-soft) 45%, transparent)}
+.sg-cell.wx,.sg-time.wx{border-top:2px solid var(--line);font-family:var(--f-mono);font-size:12px;font-weight:700;padding:6px 8px}
+.sg-ev{border:0;border-left:3px solid var(--bag-car);background:var(--sunk);color:var(--ink);text-align:left;font-size:12px;line-height:1.25;padding:3px 5px;border-radius:3px;overflow-wrap:anywhere}
+.sg-ev .mono{font-size:10px;color:var(--muted)}
+.sg-ev.flight{border-left-color:var(--bag-checked)} .sg-ev.ship{border-left-color:var(--accent)} .sg-ev.hotel{border-left-color:var(--bag-carryon)} .sg-ev.dining{border-left-color:var(--bag-wear)} .sg-ev.travel,.sg-ev.note{border-left-color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:default}
+
+/* Packing */
+.people{display:flex;gap:8px;flex-wrap:wrap}
+.person{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 14px 5px 5px}
+.person[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.ring{width:34px;height:34px;flex:none}
+.ring .bgc{stroke:var(--sunk)} .ring .fgc{stroke:var(--accent)} .ring.full .fgc{stroke:var(--done)}
+.ring text{fill:var(--ink);font-family:var(--f-mono);font-size:10px;font-weight:700}
+.person .pn{font-weight:700;line-height:1.1}
+.person .pk{font-size:12px;color:var(--muted)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.fchip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600;color:var(--muted)}
+.fchip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.bagblock{display:flex;flex-direction:column;gap:10px}
+.bagtag{display:flex;align-items:center;gap:10px}
+.bagtag .tagshape{position:relative;padding:5px 14px 5px 24px;border-radius:4px 10px 10px 4px;background:var(--bagc);color:#fff;font-family:var(--f-mono);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.bagtag .tagshape::before{content:"";position:absolute;left:8px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:var(--bg)}
+.bagtag .cnt{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+:root[data-theme="dark"] .bagtag .tagshape{color:#0D1520}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .bagtag .tagshape{color:#0D1520} }
+.cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.cat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0}
+.cat h4{margin:0 0 4px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:8px;color:var(--muted)}
+.cat h4 .mono{font-size:12px}
+.item{display:flex;align-items:center;gap:8px;padding:4px 0;min-width:0}
+.item label{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;padding:3px 0}
+.item input[type=checkbox]{width:20px;height:20px;accent-color:var(--done);flex:none;margin:0}
+.item .nm{overflow-wrap:anywhere}
+.item.done .nm{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.item .x{border:0;background:transparent;color:var(--muted);font-size:16px;line-height:1;padding:4px 6px;border-radius:6px;opacity:.55}
+.item .x:hover{opacity:1;background:var(--sunk)}
+.mine{font-family:var(--f-mono);font-size:10px;color:var(--accent);font-weight:700;margin-left:4px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel h3{font-size:17px}
+.formrow{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 160px}
+.field label,.flab{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.field input,.field select,.field textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.field textarea{min-height:76px;resize:vertical}
+.checks{display:flex;gap:8px;flex-wrap:wrap}
+.checks label{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600;font-size:14px;cursor:pointer;background:var(--bg)}
+.checks input{accent-color:var(--accent)}
+.travrow{display:grid;grid-template-columns:1fr 120px auto;gap:8px;align-items:center}
+.travrow input,.travrow select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0;width:100%}
+.err{color:var(--warn);font-size:14px;font-weight:600}
+.note{font-size:13px;color:var(--muted)}
+.banner{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:14px}
+.emptystate{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);padding:28px 18px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;background:rgba(5,12,20,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center;
+  padding:0 env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px)}
+.sheet{background:var(--surface);color:var(--ink);width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:18px max(16px, env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px, env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px;max-height:90%;overflow:auto}
+@media (min-width:640px){ .scrim{align-items:center} .sheet{border-radius:16px} }
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+@media (max-width:520px){
+  .ev{grid-template-columns:64px 1fr auto}
+  .day{grid-template-columns:54px 1fr}
+  .tab{font-size:14px}
+  .travrow{grid-template-columns:1fr 92px auto}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+/* Trip builder */
+.builder{display:flex;flex-direction:column;gap:18px}
+.bhero{display:flex;flex-direction:column;gap:6px;padding-top:6px}
+.bhero h1{font-size:clamp(30px,7vw,44px);font-weight:800;letter-spacing:-.015em}
+.bhero p{margin:0;color:var(--muted);max-width:56ch}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.q h3{font-size:16px;font-weight:600;display:flex;gap:10px;align-items:baseline}
+.q h3 .qn{font-family:var(--f-mono);font-size:12px;color:var(--accent);font-weight:700}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:12px 14px;text-align:left;display:flex;flex-direction:column;gap:2px;min-width:0}
+.opt b{font-family:var(--f-display);font-size:18px;font-weight:600}
+.opt span{font-size:13px;color:var(--muted)}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.opt[aria-pressed="true"] b{color:var(--accent)}
+.stepper{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stepper .btn{width:42px;height:42px;font-size:20px;padding:0}
+.stepper input{width:72px;text-align:center;font-family:var(--f-mono);font-weight:700;font-size:20px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:6px}
+.who{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.who .col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.namerow{display:flex;gap:6px}
+.namerow input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.preview{border:2px dashed var(--line);border-radius:14px;padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.preview .pv-n{font-family:var(--f-mono);font-size:22px;font-weight:700}
+.preview .pv-l{font-size:13px;color:var(--muted)}
+.ev.ph .lab{color:var(--muted);font-style:italic;font-weight:500}
+.ev.ph .notes{font-style:italic}
+.ev.tap{cursor:pointer;border-radius:6px}
+.ev.tap:hover{background:var(--sunk)}
+.sg-ev.ph{background:transparent;border:1px dashed var(--line);border-left:3px solid var(--line);color:var(--muted);font-style:italic}
+.dstamp .dd.big{font-size:22px}
+@media (max-width:520px){ .who{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="emptystate"><h2>Loading…</h2><p class="muted">Getting your trips ready.</p></div>
+</div>
+<div id="sheetroot"></div>
+<input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)" tabindex="-1" aria-hidden="true">
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ---------- Packing templates (from the Master Packing Lists) ---------- */
+const BAGS = {
+  wear:{label:'Wear on travel day', short:'Wear'},
+  personal:{label:'Personal item', short:'Personal item'},
+  carryon:{label:'Carry-on', short:'Carry-on'},
+  checked:{label:'Checked bag', short:'Checked'},
+  car:{label:'Car / shared gear', short:'Car'}
+};
+const BAG_ORDER = ['wear','personal','carryon','checked','car'];
+const ADDONS = [{k:'convention', label:'Convention / work', hint:'Business cards, suits'},{k:'lake', label:'Lake or beach house', hint:'Shade, chairs, cooler, cookware'}];
+// [who, bag, category, condition, items]  item "Name|condition"; condition: tag, tag+tag, !tag
+const TEMPLATE = [
+  ['adult','personal','Travel docs','',['License','Passport|intl','Birth certificate|cruise+!intl','Plane tickets / boarding passes','Cruise boarding docs|cruise','Hotel reservations & confirmations','Car rental confirmation|!cruise','Activities / excursions','Travel agent ID|cruise','Luggage tags','ID copies']],
+  ['adult','personal','Essentials','',['Phone','Credit cards','Cash','Foreign currency|intl','Water bottle','AirPods','Sunglasses + case','Gum']],
+  ['adult','personal','Travel comfort','',['Sweater or sweatshirt','Lotion / sanitizer','Compression socks','Pool slides','Chewy candy','Snacks','Books','Pillow / blanket']],
+  ['adult','personal','Electronics','',['iPad / tablet','Apple Watch','Kindle','Spare charger(s)','Bluetooth splitter','Headphone adapter','Firestick + remote']],
+  ['adult','personal','Disney gear','disney',['Disney wallet','Disney crossbody bag','Ponchos','Disney necklaces / lanyards','Disney watch band']],
+  ['adult','carryon','Night bag','',['Wall plug to multi-USB','Extension cord','3-in-1 charger','Noise machine','Watch charger','USB-C charger','Kindle charger','Foreign plugs|intl']],
+  ['adult','carryon','Toiletries','',['Toothbrush','Floss','Deodorant','Face wipes','Moisturizer','Shampoo / conditioner','Lotion','Body wash']],
+  ['adult','carryon','Health & beauty','',['Brush / elastics','Face cream / serum','Hair towel / wet brush','Hair products','Other face products','Period supplies','Straightener / curler','Makeup / jewelry','Sunscreen']],
+  ['adult','carryon','Meds & Rx','',['Prescriptions','Melatonin','Magnesium','Allergy','Pain relief','Stomach','Vitamins / supplements']],
+  ['adult','carryon','Overnight clothes','',['PJs','Sleep socks','Garments','Change of clothes','Leggings','Sports bra','Tee','Swimsuit']],
+  ['adult','carryon','Cords & cables','',['USB-C to USB-C','USB to USB-C','USB to watch','USB-C to watch','USB wall plug','USB-C wall plug','HDMI','USB-C to HDMI']],
+  ['adult','checked','Sleep & swim','',['PJs (1–2)','Sleep socks','Slippers','Swimsuits (2–3)','Cover-ups (1–3)','Cutoffs (1)','Turkish towel','Beach / sun hat']],
+  ['adult','checked','Clothes','',['T-shirts (3–5)','Other tops (2–3)','Sweater / cardi (2)','Jeans (1–2)','Shorts / capris (3–5)','Skirts / pants (3–5)','Dress / suit (1–2)','Costume / theme outfit']],
+  ['adult','checked','Shoes & accessories','',['Birks','Tevas','Sandals','Flats','Loafers','Tennis shoes','Dress shoes','Booties','Belts']],
+  ['adult','checked','Other clothes','',['Workout pants (2)','Workout tees (2)','Sports bras (2)','Bras','Underwear','Garments','Period undies','Sweats','Slips / undertees']],
+  ['adult','checked','Cruise clothes','cruise',['Formal night outfit','Semi-formal outfit','Pirate night outfit|disney','Excursion-specific gear','DCL sweats / jersey|disney','Cruise ears|disney']],
+  ['adult','checked','Cruise extras','cruise',['Door decor','Sling bag','Cruise bag','Fish extender gifts|disney','Pixie dust|disney','Popcorn bucket refill|disney','Drink refill cup','Snorkel masks','Magnets / hooks','Dry erase board + markers']],
+  ['adult','checked','Disney clothes','disney',['Disney sweatshirts','Disney T-shirts','Costume','Disney socks','Ears']],
+  ['adult','checked','Convention','convention',['Business cards','Suits','Briefcase purse']],
+  ['adult','checked','Misc.','',['Light coat / rain jacket','Ziplocks','Cards / games','Protein / soda','Laundry bag / pods','Umbrella']],
+  ['adult','car','Beach gear','lake',['Pop-up shade(s)','Chairs','Table','Cooler','Cooler bag','Picnic blanket','Tarps']],
+  ['adult','car','Cookware','lake',['Brownie pan','Muffin tins','Crock pot','Instant Pot','Rice cooker','Cookie sheets','Other cookware']],
+
+  ['kid','wear','Wear on the plane','',['Glasses','T-shirt','Underwear','Sweatpants / shorts','Socks','Sweatshirt','Coat','Watch','Crocs / sneakers']],
+  ['kid','personal','Backpack','',['Phone','iPad / tablet','AirPods / headphones','Spare charger + cord','Snack bag','Eye mask','Book','Medicine box']],
+  ['kid','personal','Snack bag','',['PB crackers (1)','Squeezie (1)','Nutella (1)','Fruit snacks (1)','PB bits (1)','Candy (1)']],
+  ['kid','personal','Travel docs','intl',['Passport']],
+  ['kid','carryon','Carry-on clothes','',['Underwear (2)','Socks','Sandals','Swim shirt (1)','Swimsuit (1)','PJs (1)','T-shirts (2)','Shorts (2)','Toothbrush bag']],
+  ['kid','carryon','Comfort & fun','',['Extra book(s)','Favorite pillow','Stuffed animals','Neck pillow','Water bottle','Other activities','Cash']],
+  ['kid','carryon','Cords & cables','',['USB-C to USB-C','USB to USB-C','USB to watch','USB-C to watch','USB wall plug','USB-C wall plug','USB to Lightning','USB-C to Lightning']],
+  ['kid','checked','Clothes (assumes a laundry day)','',['T-shirts (5)','Sweatshirts','Sweatpants (2)','Shorts (5)','Jeans (1)','PJs (1)','Swim (2)','Robe','Dress outfit / suit (1)','Sunday shoes','Costume']],
+  ['kid','checked','Food','',['PB crackers (10)','Squeezies (10)','Nutellas (10)','Fruit snacks (10)','Candy (10)','PB bits (10)','Plain Ritz crackers','Cheez-Its','Peanut butter']],
+  ['kid','checked','Cruise extras','cruise',['Pirate night outfit|disney','Duck mailbox|disney','Ducks to hide|disney','Swim goggles']],
+  ['kid','checked','Disney extras','disney',['Sucker case','Popcorn bucket','Hat','Disney shirts','Autograph book']]
+];
+const EVENT_TYPES = [['activity','Activity'],['flight','Flight'],['hotel','Hotel'],['ship','Ship / port'],['dining','Dining'],['travel','Getting around'],['note','Note']];
+const DRESS = ['Casual','Semi-formal','Formal','Pirate','Theme'];
+
+/* ---------- helpers ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'x';
+const rid = () => Math.random().toString(36).slice(2,8);
+const clone = o => JSON.parse(JSON.stringify(o ?? null));
+const DOW = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const parseISO = d => { const [y,m,dd] = String(d).split('-').map(Number); return new Date(Date.UTC(y, m-1, dd)); };
+const iso = dt => dt.toISOString().slice(0,10);
+const addDays = (d,n) => { const t = parseISO(d); t.setUTCDate(t.getUTCDate()+n); return iso(t); };
+const daysBetween = (a,b) => Math.round((parseISO(b) - parseISO(a)) / 864e5);
+const validDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d||'') && !isNaN(parseISO(d));
+function todayISO(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
+const dow = d => DOW[parseISO(d).getUTCDay()];
+const fmtMD = d => { const t = parseISO(d); return `${t.getUTCMonth()+1}/${t.getUTCDate()}`; };
+const fmtLong = d => { const t = parseISO(d); return `${MON[t.getUTCMonth()]} ${t.getUTCDate()}`; };
+function fmtTime(t){ if(!t || !/^\d{1,2}:\d{2}$/.test(t)) return ''; const [h,m] = t.split(':').map(Number); return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`; }
+function tagOk(cond, tags){ if(!cond) return true; return cond.split('+').every(c => c[0]==='!' ? !tags[c.slice(1)] : !!tags[c]); }
+const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
+const lsSet = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
+function deepMerge(t, p){ for(const k of Object.keys(p)){ const v=p[k];
+  if(v && typeof v==='object' && !Array.isArray(v) && t[k] && typeof t[k]==='object' && !Array.isArray(t[k])) deepMerge(t[k], v); else t[k] = clone(v); } return t; }
+const clampNights = n => Math.max(0, Math.min(60, Math.round(Number(n) || 0)));
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+/* Days are keyed "1".."N+1"; a start date is optional and only adds calendar dates. */
+function dayList(t){
+  const n = clampNights(t.nights) + 1, start = validDate(t.start) ? t.start : null;
+  return Array.from({length:n}, (_,i) => ({n:i+1, key:String(i+1), date: start ? addDays(start, i) : null}));
+}
+function tripTypeLabel(tags){
+  return [tags.cruise ? 'Cruise' : 'Land', tags.intl ? 'International' : 'Domestic', tags.disney ? 'Disney' : null].filter(Boolean).join(' · ');
+}
+function autoName(o){ return `${o.disney ? 'Disney ' : ''}${o.cruise ? 'cruise' : 'trip'} · ${plural(o.nights,'night')}`.replace(/^./, c => c.toUpperCase()); }
+
+/* ---------- itinerary template ---------- */
+function ph(time, type, label, notes){ return {id:'e'+rid(), time, type, label, notes:notes || '', ph:true}; }
+function genDays(o){
+  const N = clampNights(o.nights), total = N + 1, days = {};
+  const d = (n, title, events, dress) => { days[String(n)] = {title, weather:'', dress:dress || '', events}; };
+  const fl = o.intl ? 'Airline & flight #, confirmation, seats · international: arrive 3 hrs early' : 'Airline & flight #, confirmation, seats';
+  const landDay = n => o.disney
+    ? d(n, 'Park day', [ph('08:00','activity','Park opening / rope drop','Park hours, ride reservations'), ph('12:00','dining','Lunch'), ph('15:00','activity','Afternoon break or rides'), ph('18:00','dining','Dinner'), ph('21:00','activity','Fireworks / evening show')])
+    : d(n, 'Explore', [ph('09:00','activity','Morning plans'), ph('12:00','dining','Lunch'), ph('14:00','activity','Afternoon plans'), ph('18:00','dining','Dinner')]);
+  if(total === 1){ d(1, 'Day trip', [ph('08:00','travel','Leave home'), ph('12:00','dining','Lunch'), ph('18:00','travel','Head home')]); return days; }
+  if(!o.cruise){
+    d(1, 'Travel day', [ph('09:00','travel','Leave for the airport'), ph('11:00','flight','Flight · depart', fl), ph('14:00','flight','Arrive'),
+      ph('15:00','travel','Pick up rental car','Company, days, confirmation #'), ph('16:00','hotel','Check in · hotel', `${plural(N,'night')} · confirmation #`), ph('18:00','dining','Dinner')]);
+    for(let n = 2; n < total; n++) landDay(n);
+    d(total, 'Travel home', [ph('10:00','hotel','Check out'), ph('12:00','flight','Flight home', fl), ph('16:00','flight','Arrive home')]);
+    return days;
+  }
+  let n = 1;
+  if(N >= 3){
+    d(1, 'Travel to the port city', [ph('09:00','travel','Leave for the airport'), ph('11:00','flight','Flight · depart', fl), ph('15:00','flight','Arrive'),
+      ph('16:00','hotel','Check in · pre-cruise hotel','1 night · confirmation #'), ph('18:00','dining','Dinner')]);
+    n = 2;
+  }
+  d(n, 'Embarkation day', [
+    n === 1 ? ph('07:00','flight','Flight to the port city', fl) : ph('10:00','hotel','Check out · head to the port','Ask the hotel about a shuttle'),
+    ph('12:00','ship','Board the ship','Cruise confirmation #, terminal address'), ph('16:00','ship','Ship departs'),
+    ph('17:45','dining','Dinner', o.disney ? 'Rotational dining · check your dining time' : 'Check your dining time')], 'Casual');
+  const sea = []; for(let k = n + 1; k < total; k++) sea.push(k);
+  sea.forEach((k, i) => {
+    let dress = 'Casual';
+    if(sea.length >= 6 && i === sea.length - 2) dress = 'Semi-formal';
+    if(o.disney && sea.length >= 3 && i === Math.floor(sea.length / 2)) dress = 'Pirate';
+    if(i === 1) dress = 'Formal';
+    d(k, 'Port or sea day', [ph('08:00','ship','Guests ashore','Port name and hours, or At Sea'), ph('16:30','ship','All aboard'), ph('17:45','dining','Dinner')], dress);
+  });
+  d(total, 'Debarkation day', [ph('08:00','ship','Debark'), ph('09:00','travel','Head to the airport'), ph('12:00','flight','Flight home', fl), ph('17:00','flight','Arrive home')]);
+  return days;
+}
+
+/* ---------- storage: shared db, or this-device fallback ---------- */
+function dbStore(db){
+  const queues = {};
+  const q = (path, fn) => { const p = (queues[path] || Promise.resolve()).catch(()=>{}).then(fn); queues[path] = p; return p; };
+  return {
+    kind:'db',
+    watchTrips(cb, err){ return db.collection('trips').onSnapshot(s => { const o={}; s.docs.forEach(d => { if(d.exists) o[d.id] = d.data(); }); cb(o); }, err); },
+    watchPacking(tripId, cb, err){ return db.collection('packing').where('tripId','==',tripId).onSnapshot(s => { const o={}; s.docs.forEach(d => { if(d.exists) o[d.id] = d.data(); }); cb(o); }, err); },
+    setDoc:(path, body) => q(path, () => db.doc(path).set(body)),
+    updateDoc:(path, patch) => q(path, () => db.doc(path).update(patch)),
+    deleteDoc:(path) => q(path, () => db.doc(path).delete())
+  };
+}
+function localStore(){
+  const KEY = 'mctrips-local-v2';
+  let data = {trips:{}, packing:{}};
+  try { const r = lsGet(KEY); if(r) data = Object.assign(data, JSON.parse(r)); } catch(e){}
+  const tripSubs = new Set(), packSubs = new Set();
+  const emit = () => setTimeout(() => {
+    tripSubs.forEach(cb => cb(clone(data.trips)));
+    packSubs.forEach(s => { const o={}; for(const [k,v] of Object.entries(data.packing)) if(v.tripId===s.tid) o[k]=clone(v); s.cb(o); });
+  }, 0);
+  const save = () => { lsSet(KEY, JSON.stringify(data)); emit(); return Promise.resolve(); };
+  const loc = path => { const [col,id] = path.split('/'); return [data[col], id]; };
+  return {
+    kind:'local',
+    watchTrips(cb){ tripSubs.add(cb); emit(); return () => tripSubs.delete(cb); },
+    watchPacking(tid, cb){ const s={tid,cb}; packSubs.add(s); emit(); return () => packSubs.delete(s); },
+    setDoc(path, body){ const [c,id] = loc(path); c[id] = clone(body); return save(); },
+    updateDoc(path, patch){ const [c,id] = loc(path); if(!c[id]) return Promise.reject({code:'invalid_argument'}); deepMerge(c[id], patch); return save(); },
+    deleteDoc(path){ const [c,id] = loc(path); delete c[id]; return save(); }
+  };
+}
+
+/* ---------- state ---------- */
+const newWiz = () => ({cruise:false, intl:false, disney:false, nights:5, start:'', name:'', dest:'', convention:false, lake:false,
+  adults:[{id:'p'+rid(), name:''}], kids:[]});
+const S = {
+  store:null, loaded:false, canWrite:true, readOnly:false,
+  trips:{}, tripId:null, packing:{}, packUnsub:null, created:new Set(),
+  view:'trip', tab:'summary', travelerId:null, bag:'all', hidePacked:false, compact:false, weekIdx:null,
+  confirm:null, setup:null, formErr:{}, scrollTo:null, wiz:newWiz()
+};
+const trip = () => S.trips[S.tripId] ? Object.assign({id:S.tripId}, S.trips[S.tripId]) : null;
+const pkId = (tid, trav) => `${tid}--${trav}`;
+const writable = () => S.canWrite && !S.readOnly;
+
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3200); }
+function write(p){
+  return Promise.resolve(p).catch(e => {
+    if(e && e.code === 'invalid_argument'){ S.readOnly = true; toast('You can view this trip, but you need edit access to make changes.'); render(); }
+    else if(e && e.code === 'quota_exceeded') toast('Storage is full. Delete an old trip to make room.');
+    else toast('That change didn’t save. Check your connection and try again.');
+    throw e;
+  });
+}
+
+/* ---------- packing list builder ---------- */
+function buildList(t, trav){
+  const tags = t.tags || {};
+  const pk = (t.id && S.packing[pkId(t.id, trav.id)]) || {};
+  const hidden = pk.hidden || {}, checked = pk.checked || {};
+  const secs = [];
+  for(const [who,bag,cat,cond,items] of TEMPLATE){
+    if(who !== trav.kind || !tagOk(cond, tags)) continue;
+    const list = [];
+    for(const raw of items){ const [name, ic] = raw.split('|'); if(!tagOk(ic, tags)) continue;
+      list.push({id:`${who}.${slug(cat)}.${slug(name)}`, name}); }
+    if(list.length) secs.push({bag, cat, items:list});
+  }
+  for(const c of (pk.custom || [])){
+    let s = secs.find(x => x.bag === c.bag && x.cat === c.cat);
+    if(!s){ s = {bag:c.bag, cat:c.cat || 'My extras', items:[]}; secs.push(s); }
+    s.items.push({id:c.id, name:c.name, custom:true});
+  }
+  const removed = [];
+  for(const s of secs){
+    s.items = s.items.filter(i => { if(!i.custom && hidden[i.id]){ removed.push(i); return false; } return true; });
+    s.items.forEach(i => i.done = !!checked[i.id]);
+  }
+  const all = secs.flatMap(s => s.items);
+  return {secs:secs.filter(s => s.items.length), total:all.length, done:all.filter(i => i.done).length, removed, custom:pk.custom || []};
+}
+function packWrite(t, trav, patch){
+  const id = pkId(t.id, trav.id), path = 'packing/' + id;
+  if(S.packing[id] || S.created.has(id)) return write(S.store.updateDoc(path, patch));
+  S.created.add(id);
+  return write(S.store.setDoc(path, Object.assign({tripId:t.id, travelerId:trav.id, checked:{}, hidden:{}, custom:[]}, patch)));
+}
+
+/* ---------- shared bits ---------- */
+function ring(done, total){
+  const pct = total ? done/total : 0, r = 14, c = 2*Math.PI*r;
+  return `<svg class="ring${total && done===total ? ' full':''}" viewBox="0 0 34 34" aria-hidden="true">
+    <circle class="bgc" cx="17" cy="17" r="${r}" fill="none" stroke-width="4"/>
+    <circle class="fgc" cx="17" cy="17" r="${r}" fill="none" stroke-width="4" stroke-linecap="round"
+      stroke-dasharray="${(c*pct).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 17 17)"/>
+    <text x="17" y="20.5" text-anchor="middle">${Math.round(pct*100)}</text></svg>`;
+}
+function statusFor(t){
+  const days = dayList(t), n = clampNights(t.nights);
+  if(!days[0].date) return {cls:'', txt:`${plural(n,'night')} · dates not set`};
+  const today = todayISO(), first = days[0].date, last = days[days.length-1].date;
+  if(today < first){ const k = daysBetween(today, first); return {cls:'', txt: k===1 ? 'Leaves tomorrow' : `Leaves in ${k} days`}; }
+  if(today > last) return {cls:'past', txt:'Back home'};
+  return {cls:'now', txt:`Day ${daysBetween(first, today)+1} of ${days.length}`};
+}
+function choice(group, field, a, b, cur){
+  return `<div class="choice" role="group">
+    <button type="button" class="opt" aria-pressed="${!cur}" data-act="${group}" data-k="${field}" data-v="0"><b>${a[0]}</b><span>${a[1]}</span></button>
+    <button type="button" class="opt" aria-pressed="${!!cur}" data-act="${group}" data-k="${field}" data-v="1"><b>${b[0]}</b><span>${b[1]}</span></button></div>`;
+}
+const CH = {
+  cruise:[['Land','Hotels, rentals, road trips'],['Cruise','Ship, ports, sea days']],
+  intl:[['Domestic','No passports needed'],['International','Passports, plugs, currency']],
+  disney:[['Not Disney','Standard lists'],['Disney','Parks, ears, Disney extras']]
+};
+
+/* ---------- trip builder (start screen) ---------- */
+function renderBuilder(){
+  const w = S.wiz, hasTrips = Object.keys(S.trips).length > 0;
+  const tags = {cruise:w.cruise, intl:w.intl, disney:w.disney, convention:w.convention, lake:w.lake};
+  const fake = {tags};
+  const aCount = w.adults.length, kCount = w.kids.length;
+  const aItems = aCount ? buildList(fake, {kind:'adult'}).total : 0, kItems = kCount ? buildList(fake, {kind:'kid'}).total : 0;
+  const nameRows = (list, kind) => list.map((p,i) => `<div class="namerow">
+      <input id="wn-${esc(p.id)}" data-wiz-name="${esc(p.id)}" data-kind="${kind}" value="${esc(p.name)}" placeholder="${kind==='adult'?'Adult':'Kid'} ${i+1} name" aria-label="${kind==='adult'?'Adult':'Kid'} ${i+1} name" autocomplete="off">
+      <button type="button" class="iconbtn" data-act="wiz-del" data-id="${esc(p.id)}" data-kind="${kind}" aria-label="Remove">Remove</button></div>`).join('');
+  return `<div class="builder">
+    <div class="bhero">
+      ${hasTrips ? `<div><button class="linkbtn" data-act="wiz-cancel">‹ Back to my trips</button></div>` : ''}
+      <h1>Plan a trip</h1>
+      <p>Pick the basics. The app sets up the trip summary, a daily schedule and a packing list for each person.</p>
+      <p class="note">Got a trip file from family? <label class="linkbtn" for="importFile" style="cursor:pointer">Open it here</label></p>
+    </div>
+    <section class="q"><h3><span class="qn">1</span>Land or sea?</h3>${choice('wiz-set','cruise',CH.cruise[0],CH.cruise[1],w.cruise)}</section>
+    <section class="q"><h3><span class="qn">2</span>Domestic or international?</h3>${choice('wiz-set','intl',CH.intl[0],CH.intl[1],w.intl)}</section>
+    <section class="q"><h3><span class="qn">3</span>Disney?</h3>${choice('wiz-set','disney',CH.disney[0],CH.disney[1],w.disney)}</section>
+    <section class="q"><h3><span class="qn">4</span>How many nights?</h3>
+      <div class="stepper">
+        <button type="button" class="btn" data-act="wiz-nights" data-d="-1" aria-label="One fewer night">−</button>
+        <input id="wNights" type="number" min="0" max="60" inputmode="numeric" data-wiz="nights" value="${w.nights}" aria-label="Nights">
+        <button type="button" class="btn" data-act="wiz-nights" data-d="1" aria-label="One more night">+</button>
+        <span class="note">${plural(w.nights + 1,'day')} on the schedule</span>
+      </div>
+      <div class="formrow"><div class="field" style="flex:0 1 220px"><label for="wStart">First day (optional)</label><input type="date" id="wStart" data-wiz="start" value="${esc(w.start)}"></div>
+        <p class="note" style="margin:0;flex:1 1 200px">Add dates now or later. Without them, days show as Day 1, Day 2…</p></div>
+    </section>
+    <section class="q"><h3><span class="qn">5</span>Who’s going?</h3>
+      <div class="who">
+        <div class="col"><div class="flab">Adults · ${aCount}</div>${nameRows(w.adults,'adult')}<div><button type="button" class="btn small" data-act="wiz-add" data-kind="adult">+ Add adult</button></div></div>
+        <div class="col"><div class="flab">Kids · ${kCount}</div>${nameRows(w.kids,'kid')}<div><button type="button" class="btn small" data-act="wiz-add" data-kind="kid">+ Add kid</button></div></div>
+      </div>
+    </section>
+    <section class="q"><h3><span class="qn">6</span>Name it <span class="note" style="font-family:var(--f-body)">optional</span></h3>
+      <div class="formrow">
+        <div class="field" style="flex:2 1 220px"><label for="wName">Trip name</label><input id="wName" data-wiz="name" value="${esc(w.name)}" placeholder="${esc(autoName(w))}" autocomplete="off"></div>
+        <div class="field" style="flex:2 1 220px"><label for="wDest">Destination</label><input id="wDest" data-wiz="dest" value="${esc(w.dest)}" placeholder="Where you’re headed" autocomplete="off"></div>
+      </div>
+      <div><div class="flab" style="margin-bottom:6px">Also packing for</div>
+        <div class="checks">${ADDONS.map(x => `<label for="wa-${x.k}"><input type="checkbox" id="wa-${x.k}" data-wiz-add="${x.k}"${w[x.k]?' checked':''}> ${x.label}</label>`).join('')}</div></div>
+    </section>
+    <div class="preview" aria-live="polite">
+      <div><div class="pv-n">${w.nights + 1}</div><div class="pv-l">days in the summary and schedule</div></div>
+      <div><div class="pv-n">${aCount} × ${aItems}</div><div class="pv-l">adult packing ${aCount===1?'list':'lists'}</div></div>
+      <div><div class="pv-n">${kCount} × ${kItems}</div><div class="pv-l">kid packing ${kCount===1?'list':'lists'}</div></div>
+      <div><div class="pv-n" style="font-size:15px;padding-top:6px">${esc(tripTypeLabel(tags))}</div><div class="pv-l">trip type</div></div>
+    </div>
+    ${S.formErr.wiz ? `<p class="err">${esc(S.formErr.wiz)}</p>` : ''}
+    <div><button class="btn primary" style="padding:12px 20px;font-size:16px" data-act="wiz-build"${writable()?'':' disabled'}>Build my trip</button></div>
+  </div>`;
+}
+
+/* ---------- trip header & tabs ---------- */
+function renderHeader(t){
+  const ids = Object.keys(S.trips).sort((a,b) => (S.trips[b].createdAt||0) - (S.trips[a].createdAt||0));
+  const st = statusFor(t), days = dayList(t);
+  const ad = (t.travelers||[]).filter(x => x.kind==='adult'), kd = (t.travelers||[]).filter(x => x.kind==='kid');
+  const dates = days[0].date ? `${fmtLong(days[0].date)} – ${fmtLong(days[days.length-1].date)}, ${days[days.length-1].date.slice(0,4)}` : 'Not set yet';
+  return `<header class="pass">
+    <div class="pass-top">
+      <div class="pass-row">
+        <span class="route">${esc(t.destination || 'Destination TBD')}</span>
+        <span class="status ${st.cls}">${esc(st.txt)}</span>
+      </div>
+      <h1>${esc(t.name || 'Untitled trip')}</h1>
+      <div class="pass-row">
+        ${ids.length > 1 ? `<div class="tripsel"><label class="flab" for="tripPick">Trip</label>
+          <select id="tripPick" data-act="pick-trip">${ids.map(id => `<option value="${esc(id)}"${id===S.tripId?' selected':''}>${esc(S.trips[id].name||'Untitled')}</option>`).join('')}</select></div>` : '<span></span>'}
+        ${writable() ? `<button class="btn small" data-act="new-trip">+ Plan a new trip</button>` : ''}
+      </div>
+    </div>
+    <div class="pass-stub">
+      <div><div class="stub-lab">Dates</div><div class="stub-val">${esc(dates)}</div></div>
+      <div><div class="stub-lab">Nights</div><div class="stub-val">${clampNights(t.nights)}</div></div>
+      <div><div class="stub-lab">Trip type</div><div class="stub-val">${esc(tripTypeLabel(t.tags||{}))}</div></div>
+      <div><div class="stub-lab">Travelers</div><div class="stub-val">${plural(ad.length,'adult')}${kd.length ? ', ' + plural(kd.length,'kid') : ''}</div></div>
+    </div>
+  </header>`;
+}
+function renderTabs(){
+  const tabs = [['summary','Summary'],['schedule','Schedule'],['packing','Packing'],['setup','Setup']];
+  return `<nav class="tabs" role="tablist">${tabs.map(([k,l]) => `<button class="tab" role="tab" id="tab-${k}" aria-selected="${S.tab===k}" data-act="tab" data-tab="${k}">${l}</button>`).join('')}</nav>`;
+}
+const sortEvents = evs => (evs||[]).slice().sort((a,b) => (a.time||'99:99').localeCompare(b.time||'99:99'));
+const typeLabel = k => (EVENT_TYPES.find(x => x[0]===k) || [,''])[1];
+
+/* ---------- summary ---------- */
+function renderSummary(t){
+  const days = dayList(t), today = todayISO(), wr = writable();
+  const travelers = t.travelers || [];
+  const hasPh = days.some(d => ((t.days||{})[d.key]?.events || []).some(e => e.ph));
+  return `<section class="panel">
+      <div class="bar"><h3>Travelers</h3>${wr ? `<button class="linkbtn" data-act="tab" data-tab="setup">Edit</button>` : ''}</div>
+      <div class="chips">${travelers.map(x => `<span class="chip">${esc(x.name)} · ${x.kind==='kid'?'kid':'adult'}</span>`).join('') || '<span class="note">No travelers yet.</span>'}</div>
+      ${t.party ? `<p class="note" style="margin:0">Traveling with ${esc(t.party)}</p>` : ''}
+    </section>
+    <div class="bar"><h2 style="font-size:22px">Day by day</h2>${hasPh && wr ? `<span class="note">Gray items are suggestions. Tap one to fill it in.</span>` : ''}</div>
+    <div class="days">${days.map(dd => {
+      const day = (t.days||{})[dd.key] || {}, evs = sortEvents(day.events), isToday = dd.date && dd.date === today;
+      return `<article class="day${isToday?' today':''}" id="day-${dd.key}">
+        <div class="dstamp">${dd.date ? `<span class="dw">${dow(dd.date)}</span><span class="dd">${fmtMD(dd.date)}</span><span class="dn">Day ${dd.n}</span>` : `<span class="dw">DAY</span><span class="dd big">${dd.n}</span>`}</div>
+        <div class="dbody">
+          <div class="dhead"><h3>${esc(day.title || 'Free day')}</h3>
+            ${wr ? `<button class="iconbtn" data-act="edit-day" data-key="${dd.key}">Edit day</button>` : ''}</div>
+          ${(day.weather || day.dress || isToday) ? `<div class="chips">${isToday?'<span class="chip today">Today</span>':''}${day.weather?`<span class="chip">${esc(day.weather)}</span>`:''}${day.dress?`<span class="chip dress">Dinner: ${esc(day.dress)}</span>`:''}</div>` : ''}
+          ${evs.length ? `<ul class="events">${evs.map(e => `<li class="ev${e.ph?' ph':''}${wr?' tap':''}"${wr?` data-act="edit-ev" data-key="${dd.key}" data-id="${esc(e.id)}" tabindex="0" role="button"`:''}>
+              <span class="t">${esc(fmtTime(e.time)) || '—'}</span>
+              <div class="what"><div class="lab">${e.type && !['note','activity'].includes(e.type) ? `<span class="etype ${esc(e.type)}">${esc(typeLabel(e.type))}</span>` : ''}${esc(e.label)}</div>
+                ${e.notes ? `<div class="notes">${esc(e.notes)}</div>` : ''}</div><span></span>
+            </li>`).join('')}</ul>` : `<p class="empty-day">Nothing planned yet.</p>`}
+          ${wr ? `<div><button class="btn small" data-act="add-ev" data-key="${dd.key}">+ Add</button></div>` : ''}
+        </div></article>`;
+    }).join('')}</div>`;
+}
+
+/* ---------- daily schedule grid ---------- */
+function slotOf(time){ if(!time || !/^\d{1,2}:\d{2}$/.test(time)) return 'none'; const [h,m] = time.split(':').map(Number); const s = h*2 + (m >= 30 ? 1 : 0); return s < 16 ? 'early' : s > 43 ? 'late' : s; }
+function renderSchedule(t){
+  const days = dayList(t), today = todayISO(), pages = Math.ceil(days.length / 7);
+  if(S.weekIdx == null){ const i = days.findIndex(d => d.date === today); S.weekIdx = i >= 0 ? Math.floor(i/7) : 0; }
+  S.weekIdx = Math.max(0, Math.min(S.weekIdx, pages-1));
+  const cols = days.slice(S.weekIdx*7, S.weekIdx*7 + 7);
+  const bucket = {}, used = new Set();
+  cols.forEach(dd => { sortEvents(((t.days||{})[dd.key]||{}).events).forEach(e => { const s = slotOf(e.time), k = dd.key+'|'+s; (bucket[k] = bucket[k] || []).push(e); used.add(String(s)); }); });
+  const rows = ['none','early']; for(let s = 16; s <= 43; s++) rows.push(s); rows.push('late');
+  const showRows = rows.filter(r => typeof r !== 'number' ? used.has(String(r)) : (!S.compact || used.has(String(r))));
+  const rowLabel = r => r === 'none' ? 'Anytime' : r === 'early' ? 'Early' : r === 'late' ? 'Late' : fmtTime(`${Math.floor(r/2)}:${r%2 ? '30' : '00'}`).replace(' ', ' ');
+  const n = cols.length;
+  let html = `<div class="sg-corner">${cols[0].date ? esc(fmtLong(cols[0].date)) : 'Day ' + cols[0].n}</div>`;
+  cols.forEach(dd => { const day = (t.days||{})[dd.key] || {};
+    html += `<button class="sg-head${dd.date && dd.date===today?' today':''}" data-act="goto-day" data-key="${dd.key}" aria-label="Open day ${dd.n}">
+      <span class="sg-dow">${dd.date ? `${dow(dd.date)} ${fmtMD(dd.date)}` : `DAY ${dd.n}`}</span><span class="sg-loc">${esc(day.title || 'Free day')}</span>${day.dress ? `<span class="chip dress">${esc(day.dress)}</span>` : ''}</button>`; });
+  showRows.forEach(r => {
+    const hour = typeof r === 'number' && r % 2 === 0;
+    html += `<div class="sg-time${hour ? ' hr' : ''}">${esc(rowLabel(r))}</div>`;
+    cols.forEach(dd => { const evs = bucket[dd.key+'|'+r] || [];
+      html += `<div class="sg-cell${hour ? ' hr' : ''}${dd.date && dd.date===today ? ' today' : ''}">${evs.map(e => `<button class="sg-ev ${esc(e.type||'')}${e.ph?' ph':''}" data-act="goto-day" data-key="${dd.key}" title="${esc(fmtTime(e.time)+' '+e.label)}">${typeof r === 'number' ? '' : `<span class="mono">${esc(fmtTime(e.time))}</span> `}${esc(e.label)}</button>`).join('')}</div>`; });
+  });
+  html += `<div class="sg-time wx">Weather</div>`;
+  cols.forEach(dd => { const day = (t.days||{})[dd.key] || {}; html += `<div class="sg-cell wx">${esc(day.weather || '')}</div>`; });
+  return `<div class="bar"><h2 style="font-size:22px">Daily schedule</h2>
+      ${pages > 1 ? `<div class="formrow" style="align-items:center">
+        <button class="btn small" data-act="week-prev"${S.weekIdx === 0 ? ' disabled' : ''} aria-label="Previous week">‹</button>
+        <span class="mono" style="font-size:13px;font-weight:700">Days ${cols[0].n}–${cols[n-1].n} of ${days.length}</span>
+        <button class="btn small" data-act="week-next"${S.weekIdx === pages-1 ? ' disabled' : ''} aria-label="Next week">›</button>
+      </div>` : ''}</div>
+    <div class="bar"><span class="note">Tap a day or a plan to open it in the summary.</span>
+      <label class="toggle" for="compact"><input type="checkbox" id="compact" data-act="compact"${S.compact ? ' checked' : ''}> Only times with plans</label></div>
+    <div class="weekwrap"><div class="sgrid" style="grid-template-columns:72px repeat(${n},minmax(118px,1fr));min-width:${72 + n*128}px">${html}</div></div>`;
+}
+
+/* ---------- packing ---------- */
+function renderPacking(t){
+  const travs = t.travelers || [];
+  if(!travs.length) return `<div class="emptystate"><h3>Who’s packing?</h3><p class="muted">Add travelers in Setup and each person gets their own checklist.</p>
+    <button class="btn primary" data-act="tab" data-tab="setup">Add travelers</button></div>`;
+  if(!travs.find(x => x.id === S.travelerId)){ const saved = lsGet('mctrips-trav-'+t.id); S.travelerId = travs.find(x => x.id === saved) ? saved : travs[0].id; }
+  const trav = travs.find(x => x.id === S.travelerId), wr = writable();
+  const L = buildList(t, trav);
+  const bagsPresent = BAG_ORDER.filter(b => L.secs.some(s => s.bag === b));
+  if(S.bag !== 'all' && !bagsPresent.includes(S.bag)) S.bag = 'all';
+  const people = travs.map(x => { const l = buildList(t, x);
+    return `<button class="person" aria-pressed="${x.id===S.travelerId}" data-act="pick-trav" data-id="${esc(x.id)}">${ring(l.done, l.total)}
+      <span><span class="pn">${esc(x.name)}</span><br><span class="pk mono">${l.done}/${l.total} packed</span></span></button>`; }).join('');
+  const blocks = BAG_ORDER.filter(b => S.bag==='all' || S.bag===b).map(b => {
+    const secs = L.secs.filter(s => s.bag === b); if(!secs.length) return '';
+    const items = secs.flatMap(s => s.items), done = items.filter(i => i.done).length;
+    const cats = secs.map(s => {
+      const shown = S.hidePacked ? s.items.filter(i => !i.done) : s.items;
+      if(!shown.length) return '';
+      return `<section class="cat"><h4><span>${esc(s.cat)}</span><span class="mono">${s.items.filter(i=>i.done).length}/${s.items.length}</span></h4>
+        ${shown.map(i => { const cid = 'chk-' + slug(i.id) + '-' + i.id.length;
+          return `<div class="item${i.done?' done':''}"><label for="${cid}"><input type="checkbox" id="${cid}" data-act="check" data-id="${esc(i.id)}"${i.done?' checked':''}${wr?'':' disabled'}><span class="nm">${esc(i.name)}${i.custom?'<span class="mine">ADDED</span>':''}</span></label>
+          ${wr ? `<button class="x" data-act="${i.custom?'del-custom':'hide'}" data-id="${esc(i.id)}" aria-label="Remove ${esc(i.name)} from ${esc(trav.name)}’s list" title="Remove from this list">×</button>` : ''}</div>`; }).join('')}
+      </section>`; }).join('');
+    return `<div class="bagblock"><div class="bagtag" style="--bagc:var(--bag-${b})"><span class="tagshape">${BAGS[b].label}</span><span class="cnt">${done}/${items.length}</span></div>
+      ${cats ? `<div class="cats">${cats}</div>` : `<p class="note">Everything in this bag is packed.</p>`}</div>`;
+  }).join('');
+  const catOptions = BAG_ORDER.map(b => `<optgroup label="${BAGS[b].label}">${[...new Set(L.secs.filter(s=>s.bag===b).map(s=>s.cat).concat(['My extras']))].map(c => `<option value="${esc(b+'::'+c)}">${esc(c)}</option>`).join('')}</optgroup>`).join('');
+  const confirmReset = S.confirm === 'reset-'+trav.id;
+  return `<div class="people">${people}</div>
+    <div class="bar">
+      <div class="filters" role="group" aria-label="Show bag">
+        <button class="fchip" aria-pressed="${S.bag==='all'}" data-act="bag" data-bag="all">All bags</button>
+        ${bagsPresent.map(b => `<button class="fchip" aria-pressed="${S.bag===b}" data-act="bag" data-bag="${b}">${BAGS[b].short}</button>`).join('')}
+      </div>
+      <label class="toggle" for="hidePacked"><input type="checkbox" id="hidePacked" data-act="hide-packed"${S.hidePacked?' checked':''}> Hide packed</label>
+    </div>
+    ${blocks || '<p class="note">Nothing on this list yet.</p>'}
+    ${wr ? `<div class="panel">
+      <h3>Add to ${esc(trav.name)}’s list</h3>
+      <form class="formrow" data-form="add-item">
+        <div class="field" style="flex:2 1 200px"><label for="addName">Item</label><input id="addName" data-keep placeholder="e.g. Glow sticks" autocomplete="off"></div>
+        <div class="field"><label for="addCat">Goes in</label><select id="addCat" data-keep>${catOptions}</select></div>
+        <button class="btn primary" type="submit">Add</button>
+      </form>
+      <div class="bar">
+        ${L.removed.length ? `<span class="note">${plural(L.removed.length,'item')} removed from this list · <button class="linkbtn" data-act="restore">Put them back</button></span>` : '<span class="note">Tap × to drop items that don’t apply to this person.</span>'}
+        ${confirmReset ? `<span class="formrow"><span class="note">Uncheck all ${L.done} items?</span><button class="btn small danger" data-act="reset-yes">Uncheck all</button><button class="btn small ghost" data-act="cancel">Keep</button></span>`
+          : (L.done ? `<button class="btn small ghost" data-act="reset">Start over (repack for home)</button>` : '')}
+      </div></div>` : ''}`;
+}
+
+/* ---------- setup ---------- */
+function renderSetup(t){
+  const wr = writable(), dis = wr ? '' : ' disabled';
+  if(!S.setup || S.setup.id !== t.id){
+    const tg = t.tags || {};
+    S.setup = {id:t.id, cruise:!!tg.cruise, intl:!!tg.intl, disney:!!tg.disney, convention:!!tg.convention, lake:!!tg.lake,
+      travelers:clone(t.travelers || [])};
+  }
+  const s = S.setup, e = S.formErr;
+  const rows = s.travelers.map(x => `<div class="travrow" data-trav="${esc(x.id)}">
+      <input id="tn-${esc(x.id)}" data-keep value="${esc(x.name)}" aria-label="Name" placeholder="Name"${dis}>
+      <select id="tk-${esc(x.id)}" data-keep aria-label="List type"${dis}><option value="adult"${x.kind==='adult'?' selected':''}>Adult list</option><option value="kid"${x.kind==='kid'?' selected':''}>Kid list</option></select>
+      ${wr ? `<button type="button" class="iconbtn" data-act="trav-del" data-id="${esc(x.id)}">Remove</button>` : '<span></span>'}
+    </div>`).join('');
+  return `
+  <form class="panel" data-form="trip">
+    <h3>Trip details</h3>
+    <div class="formrow">
+      <div class="field" style="flex:2 1 220px"><label for="tName">Trip name</label><input id="tName" data-keep value="${esc(t.name)}"${dis}></div>
+      <div class="field" style="flex:2 1 220px"><label for="tDest">Destination</label><input id="tDest" data-keep value="${esc(t.destination)}"${dis}></div>
+    </div>
+    <div class="formrow">
+      <div class="field"><label for="tStart">First day</label><input type="date" id="tStart" data-keep value="${esc(t.start)}"${dis}></div>
+      <div class="field"><label for="tNights">Nights</label><input type="number" min="0" max="60" id="tNights" data-keep value="${clampNights(t.nights)}"${dis}></div>
+      <div class="field" style="flex:2 1 220px"><label for="tParty">Traveling with</label><input id="tParty" data-keep value="${esc(t.party)}" placeholder="Other families or friends"${dis}></div>
+    </div>
+    <div class="flab">Trip type (sets which packing items show up)</div>
+    ${choice('set-tag','cruise',CH.cruise[0],CH.cruise[1],s.cruise)}
+    ${choice('set-tag','intl',CH.intl[0],CH.intl[1],s.intl)}
+    ${choice('set-tag','disney',CH.disney[0],CH.disney[1],s.disney)}
+    <div class="checks">${ADDONS.map(x => `<label for="ta-${x.k}"><input type="checkbox" id="ta-${x.k}" data-act="set-addon" data-k="${x.k}"${s[x.k]?' checked':''}${dis}> ${x.label}</label>`).join('')}</div>
+    <div style="display:flex;flex-direction:column;gap:8px"><div class="flab">Travelers</div>${rows}
+      ${wr ? `<div><button type="button" class="btn small" data-act="trav-add">+ Add traveler</button></div>` : ''}</div>
+    ${e.trip ? `<p class="err">${esc(e.trip)}</p>` : ''}
+    ${wr ? `<div><button class="btn primary" type="submit">Save changes</button></div>` : ''}
+  </form>
+  <section class="panel">
+    <h3>Share & back up</h3>
+    <p class="note" style="margin:0">Trips are saved on this phone. Send the trip file to family so they can open it in their copy of the app. Send it again after you change plans; their packing checkmarks stay.</p>
+    <div class="formrow">
+      <button type="button" class="btn small primary" data-act="export-trip">Send this trip</button>
+      <button type="button" class="btn small" data-act="export-all">Back up all trips</button>
+      <label class="btn small" for="importFile" style="cursor:pointer">Open a trip or backup file</label>
+    </div>
+  </section>
+  ${wr ? `<section class="panel">
+    <h3>Start the summary over</h3>
+    <p class="note" style="margin:0">Replaces every day’s plans with fresh suggestions for this trip type and length. Packing checklists aren’t affected.</p>
+    <div>${S.confirm==='rebuild' ? `<span class="formrow"><span class="note">Replace all plans?</span><button class="btn small danger" data-act="rebuild-yes">Replace plans</button><button class="btn small ghost" data-act="cancel">Keep them</button></span>`
+      : `<button class="btn small" data-act="rebuild">Rebuild summary</button>`}</div>
+  </section>
+  <section class="panel">
+    <h3>Delete this trip</h3>
+    <div>${S.confirm==='delete-trip' ? `<span class="formrow"><span class="note">Delete this trip and its plans?</span><button class="btn small danger" data-act="del-trip-yes">Delete</button><button class="btn small ghost" data-act="cancel">Keep it</button></span>`
+      : `<button class="btn small danger" data-act="del-trip">Delete trip</button>`}</div>
+  </section>` : ''}`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const app = document.getElementById('app');
+  const kept = {};
+  app.querySelectorAll('[data-keep]').forEach(el => { kept[el.id] = el.type==='checkbox' ? el.checked : el.value; });
+  const keepKey = S.view + '|' + S.tripId + '|' + S.tab;
+  const active = document.activeElement && document.activeElement.id;
+  const sx = window.scrollX, sy = window.scrollY;
+
+  let html = '';
+  const t = trip();
+  if(!S.loaded) html += `<div class="emptystate"><h2>Loading…</h2></div>`;
+  else if(S.view === 'new' || !t){
+    html += renderBuilder();
+  } else {
+    html += renderHeader(t) + renderTabs();
+    html += `<main role="tabpanel" aria-labelledby="tab-${S.tab}" style="display:flex;flex-direction:column;gap:14px">${
+      S.tab==='schedule' ? renderSchedule(t) : S.tab==='packing' ? renderPacking(t) : S.tab==='setup' ? renderSetup(t) : renderSummary(t)}</main>`;
+  }
+  app.innerHTML = html;
+  if(render.key === keepKey) for(const [id,v] of Object.entries(kept)){ const el = document.getElementById(id); if(el){ if(el.type==='checkbox') el.checked = v; else el.value = v; } }
+  render.key = keepKey;
+  if(active){ const el = document.getElementById(active); if(el) el.focus({preventScroll:true}); }
+  if(S.scrollTo){ const el = document.getElementById('day-'+S.scrollTo); S.scrollTo = null; if(el) el.scrollIntoView({block:'start'}); }
+  else window.scrollTo(sx, sy);
+}
+
+/* ---------- sheet (edit day / event) ---------- */
+function closeSheet(){ document.getElementById('sheetroot').innerHTML = ''; }
+function dayName(t, key){ const dd = dayList(t).find(d => d.key === key); return dd && dd.date ? `${dow(dd.date)} ${fmtLong(dd.date)}` : `Day ${key}`; }
+function openSheet(kind, key, evId){
+  const t = trip(); if(!t) return;
+  const day = (t.days||{})[key] || {};
+  const ev = evId ? (day.events||[]).find(e => e.id === evId) : null;
+  const val = (x, f) => x && !x.ph ? x[f] : '';
+  let body;
+  if(kind === 'day'){
+    body = `<h3>${esc(dayName(t, key))}</h3>
+      <div class="field"><label for="sTitle">Day title</label><input id="sTitle" value="${esc(day.title)}" placeholder="Where you are or what’s happening"></div>
+      <div class="formrow">
+        <div class="field"><label for="sWeather">Weather</label><input id="sWeather" value="${esc(day.weather)}" placeholder="72–82°F"></div>
+        <div class="field"><label for="sDress">Dinner dress code</label><input id="sDress" list="dressList" value="${esc(day.dress)}" placeholder="Casual"><datalist id="dressList">${DRESS.map(d=>`<option value="${d}">`).join('')}</datalist></div>
+      </div>`;
+  } else {
+    body = `<h3>${ev ? 'Edit' : 'Add to'} ${esc(dayName(t, key))}</h3>
+      <div class="formrow">
+        <div class="field"><label for="sTime">Time</label><input type="time" id="sTime" value="${esc(ev ? ev.time : '')}"></div>
+        <div class="field"><label for="sType">Kind</label><select id="sType">${EVENT_TYPES.map(([k,l]) => `<option value="${k}"${(ev?ev.type:'activity')===k?' selected':''}>${l}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label for="sLabel">What</label><input id="sLabel" value="${esc(val(ev,'label'))}" placeholder="${esc(ev && ev.ph ? ev.label : 'What’s happening')}"></div>
+      <div class="field"><label for="sNotes">Details</label><textarea id="sNotes" placeholder="${esc(ev && ev.ph && ev.notes ? ev.notes : 'Confirmation numbers, addresses, meeting spots')}">${esc(val(ev,'notes'))}</textarea></div>`;
+  }
+  document.getElementById('sheetroot').innerHTML = `<div class="scrim" data-sheet-scrim>
+    <form class="sheet" role="dialog" aria-modal="true" data-sheet="${kind}" data-key="${esc(key)}" data-id="${esc(evId||'')}">
+      ${body}
+      <p class="err" id="sErr" hidden></p>
+      <div class="bar"><div class="formrow"><button class="btn primary" type="submit">Save</button><button type="button" class="btn ghost" data-sheet-act="close">Cancel</button></div>
+        ${ev ? `<span id="sDelWrap"><button type="button" class="btn small danger" data-sheet-act="del">Delete</button></span>` : ''}</div>
+    </form></div>`;
+  const first = document.querySelector('.sheet input:not([type=time])') || document.querySelector('.sheet input'); if(first) first.focus();
+}
+document.getElementById('sheetroot').addEventListener('click', e => {
+  if(e.target.matches('[data-sheet-scrim]')) return closeSheet();
+  const a = e.target.closest('[data-sheet-act]'); if(!a) return;
+  const form = a.closest('form');
+  if(a.dataset.sheetAct === 'close') return closeSheet();
+  if(a.dataset.sheetAct === 'del'){ document.getElementById('sDelWrap').innerHTML = `<span class="note">Delete this?</span> <button type="button" class="btn small danger" data-sheet-act="del-yes">Delete</button>`; return; }
+  if(a.dataset.sheetAct === 'del-yes'){
+    const t = trip(), key = form.dataset.key, day = (t.days||{})[key] || {};
+    const events = (day.events||[]).filter(x => x.id !== form.dataset.id);
+    write(S.store.updateDoc('trips/'+t.id, {days:{[key]:{events}}})).then(() => toast('Deleted')).catch(()=>{});
+    closeSheet();
+  }
+});
+document.getElementById('sheetroot').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, t = trip(), key = f.dataset.key, kind = f.dataset.sheet;
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  let patch;
+  if(kind === 'day') patch = {title:v('sTitle'), weather:v('sWeather'), dress:v('sDress')};
+  else {
+    const day = (t.days||{})[key] || {}, events = clone(day.events || []);
+    const old = events.find(x => x.id === f.dataset.id);
+    const label = v('sLabel') || (old && old.ph ? old.label : '');
+    if(!label){ const er = document.getElementById('sErr'); er.textContent = 'Add a short description of what’s happening.'; er.hidden = false; return; }
+    const item = {id:f.dataset.id || ('e'+rid()), time:v('sTime'), type:v('sType'), label, notes:v('sNotes') || (old && old.ph && !v('sLabel') ? old.notes : '')};
+    const i = events.findIndex(x => x.id === item.id); if(i >= 0) events[i] = item; else events.push(item);
+    patch = {events};
+  }
+  write(S.store.updateDoc('trips/'+t.id, {days:{[key]:patch}})).then(() => toast('Saved')).catch(()=>{});
+  closeSheet();
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && document.querySelector('.scrim')) closeSheet();
+  if((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('li[role=button]')){ e.preventDefault(); e.target.click(); }
+});
+
+/* ---------- actions ---------- */
+function selectTrip(id){
+  if(S.tripId === id) return;
+  S.tripId = id; S.packing = {}; S.created = new Set(); S.setup = null; S.confirm = null; S.formErr = {}; S.weekIdx = null;
+  if(id) lsSet('mctrips-trip', id);
+  if(S.packUnsub){ try { S.packUnsub(); } catch(e){} S.packUnsub = null; }
+  if(id) S.packUnsub = S.store.watchPacking(id, o => { S.packing = o; render(); }, () => {});
+}
+function defaultTrip(){
+  const ids = Object.keys(S.trips); if(!ids.length) return null;
+  const saved = lsGet('mctrips-trip'); if(saved && S.trips[saved]) return saved;
+  const today = todayISO();
+  const ongoing = ids.find(id => { const d = dayList(S.trips[id]); return d[0].date && d[0].date <= today && d[d.length-1].date >= today; }); if(ongoing) return ongoing;
+  const upcoming = ids.filter(id => validDate(S.trips[id].start) && S.trips[id].start > today).sort((a,b) => S.trips[a].start.localeCompare(S.trips[b].start)); if(upcoming.length) return upcoming[0];
+  return ids.sort((a,b) => (S.trips[b].createdAt||0) - (S.trips[a].createdAt||0))[0];
+}
+function readTravRows(){
+  return [...document.querySelectorAll('[data-trav]')].map(r => ({id:r.dataset.trav, name:(document.getElementById('tn-'+r.dataset.trav).value||'').trim(), kind:document.getElementById('tk-'+r.dataset.trav).value}));
+}
+function buildTrip(){
+  const w = S.wiz;
+  const nights = clampNights(w.nights);
+  if(w.start && !validDate(w.start)){ S.formErr = {wiz:'That first day isn’t a valid date.'}; render(); return; }
+  if(!w.adults.length && !w.kids.length){ S.formErr = {wiz:'Add at least one traveler.'}; render(); return; }
+  const travelers = w.adults.map((p,i) => ({id:p.id, name:p.name.trim() || `Adult ${i+1}`, kind:'adult'}))
+    .concat(w.kids.map((p,i) => ({id:p.id, name:p.name.trim() || `Kid ${i+1}`, kind:'kid'})));
+  const tags = {cruise:w.cruise, intl:w.intl, disney:w.disney, convention:w.convention, lake:w.lake};
+  const name = w.name.trim() || autoName(w);
+  const id = slug(name).slice(0,30) + '-' + rid();
+  const body = {name, destination:w.dest.trim(), start:w.start || '', nights, tags, travelers, party:'', days:genDays({...tags, nights}), createdAt:Date.now()};
+  S.formErr = {};
+  write(S.store.setDoc('trips/'+id, body)).then(() => {
+    selectTrip(id); S.view = 'trip'; S.tab = 'summary'; S.wiz = newWiz(); render(); window.scrollTo(0,0); toast('Trip created');
+  }).catch(()=>{});
+}
+
+const app = document.getElementById('app');
+app.addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if(!a || a.tagName === 'INPUT' || a.tagName === 'SELECT') return;
+  const t = trip(), act = a.dataset.act, w = S.wiz;
+  // builder
+  if(act === 'wiz-set'){ w[a.dataset.k] = a.dataset.v === '1'; render(); return; }
+  if(act === 'wiz-nights'){ w.nights = clampNights(w.nights + Number(a.dataset.d)); render(); return; }
+  if(act === 'wiz-add'){ const list = a.dataset.kind === 'kid' ? w.kids : w.adults; const p = {id:'p'+rid(), name:''}; list.push(p); render();
+    const el = document.getElementById('wn-'+p.id); if(el) el.focus(); return; }
+  if(act === 'wiz-del'){ const k = a.dataset.kind === 'kid' ? 'kids' : 'adults'; w[k] = w[k].filter(p => p.id !== a.dataset.id); render(); return; }
+  if(act === 'wiz-build') return buildTrip();
+  if(act === 'wiz-cancel'){ S.view = 'trip'; S.formErr = {}; render(); return; }
+  if(act === 'new-trip'){ S.view = 'new'; S.wiz = newWiz(); S.formErr = {}; render(); window.scrollTo(0,0); return; }
+  // trip views
+  if(act === 'tab'){ S.tab = a.dataset.tab; S.confirm = null; S.formErr = {}; render(); window.scrollTo(0, 0); return; }
+  if(act === 'edit-day') return openSheet('day', a.dataset.key);
+  if(act === 'edit-ev') return openSheet('event', a.dataset.key, a.dataset.id);
+  if(act === 'add-ev') return openSheet('event', a.dataset.key);
+  if(act === 'goto-day'){ S.tab = 'summary'; S.scrollTo = a.dataset.key; render(); return; }
+  if(act === 'week-prev'){ S.weekIdx = (S.weekIdx||0) - 1; render(); return; }
+  if(act === 'week-next'){ S.weekIdx = (S.weekIdx||0) + 1; render(); return; }
+  if(act === 'pick-trav'){ S.travelerId = a.dataset.id; S.confirm = null; lsSet('mctrips-trav-'+t.id, a.dataset.id); render(); return; }
+  if(act === 'bag'){ S.bag = a.dataset.bag; render(); return; }
+  if(act === 'cancel'){ S.confirm = null; render(); return; }
+  const trav = t && (t.travelers||[]).find(x => x.id === S.travelerId);
+  if(act === 'hide' && trav){ packWrite(t, trav, {hidden:{[a.dataset.id]:true}}).catch(()=>{}); return; }
+  if(act === 'del-custom' && trav){ const L = buildList(t, trav); packWrite(t, trav, {custom:L.custom.filter(c => c.id !== a.dataset.id)}).catch(()=>{}); return; }
+  if(act === 'restore' && trav){ const L = buildList(t, trav); const h = {}; L.removed.forEach(i => h[i.id] = false); packWrite(t, trav, {hidden:h}).then(() => toast('Items restored')).catch(()=>{}); return; }
+  if(act === 'reset' && trav){ S.confirm = 'reset-'+trav.id; render(); return; }
+  if(act === 'reset-yes' && trav){ const pk = S.packing[pkId(t.id, trav.id)] || {}; const c = {}; Object.keys(pk.checked||{}).forEach(k => c[k] = false);
+    S.confirm = null; packWrite(t, trav, {checked:c}).then(() => toast('Everything unchecked')).catch(()=>{}); render(); return; }
+  // setup
+  if(act === 'set-tag' && S.setup){ S.setup[a.dataset.k] = a.dataset.v === '1'; render(); return; }
+  if(act === 'trav-add' && S.setup){ S.setup.travelers = readTravRows().concat([{id:'p'+rid(), name:'', kind:'adult'}]); render(); return; }
+  if(act === 'trav-del' && S.setup){ S.setup.travelers = readTravRows().filter(x => x.id !== a.dataset.id); render(); return; }
+  if(act === 'rebuild'){ S.confirm = 'rebuild'; render(); return; }
+  if(act === 'rebuild-yes'){ S.confirm = null; const tg = t.tags || {};
+    const fresh = genDays({...tg, nights:clampNights(t.nights)});
+    write(S.store.setDoc('trips/'+t.id, Object.assign(clone(S.trips[t.id]), {days:fresh}))).then(() => toast('Summary rebuilt')).catch(()=>{}); render(); return; }
+  if(act === 'export-trip') return exportTrip();
+  if(act === 'export-all') return exportAll();
+  if(act === 'del-trip'){ S.confirm = 'delete-trip'; render(); return; }
+  if(act === 'del-trip-yes'){ const id = t.id; S.confirm = null; lsSet('mctrips-trip',''); write(S.store.deleteDoc('trips/'+id)).then(() => toast('Trip deleted')).catch(()=>{}); return; }
+});
+app.addEventListener('input', e => {
+  const el = e.target, w = S.wiz;
+  if(el.dataset.wiz){ if(el.dataset.wiz === 'nights'){ w.nights = clampNights(el.value); } else w[el.dataset.wiz] = el.value; return; }
+  if(el.dataset.wizName){ const list = el.dataset.kind === 'kid' ? w.kids : w.adults; const p = list.find(x => x.id === el.dataset.wizName); if(p) p.name = el.value; }
+});
+app.addEventListener('change', e => {
+  const el = e.target, t = trip();
+  if(el.dataset.wiz === 'nights'){ S.wiz.nights = clampNights(el.value); render(); return; }
+  if(el.dataset.wizAdd){ S.wiz[el.dataset.wizAdd] = el.checked; render(); return; }
+  if(el.dataset.act === 'set-addon' && S.setup){ S.setup[el.dataset.k] = el.checked; return; }
+  if(el.dataset.act === 'pick-trip'){ selectTrip(el.value); render(); return; }
+  if(el.dataset.act === 'hide-packed'){ S.hidePacked = el.checked; render(); return; }
+  if(el.dataset.act === 'compact'){ S.compact = el.checked; render(); return; }
+  if(el.dataset.act === 'check'){
+    const trav = (t.travelers||[]).find(x => x.id === S.travelerId); if(!trav) return;
+    packWrite(t, trav, {checked:{[el.dataset.id]:el.checked}}).catch(() => render());
+  }
+});
+app.addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, t = trip(), v = id => (document.getElementById(id)?.value || '').trim();
+  if(f.dataset.form === 'add-item'){
+    const trav = (t.travelers||[]).find(x => x.id === S.travelerId), name = v('addName'); if(!trav || !name) return;
+    const [bag, cat] = v('addCat').split('::');
+    const L = buildList(t, trav);
+    packWrite(t, trav, {custom:L.custom.concat([{id:'c'+rid(), name, bag, cat}])}).then(() => toast(`Added to ${trav.name}’s list`)).catch(()=>{});
+    document.getElementById('addName').value = ''; return;
+  }
+  if(f.dataset.form === 'trip'){
+    const s = S.setup, travelers = readTravRows().map((x,i) => ({...x, name: x.name || `Traveler ${i+1}`}));
+    const start = v('tStart');
+    S.formErr = {};
+    if(!v('tName')) S.formErr.trip = 'Give the trip a name.';
+    else if(start && !validDate(start)) S.formErr.trip = 'That first day isn’t a valid date.';
+    if(S.formErr.trip){ render(); return; }
+    const tags = {cruise:s.cruise, intl:s.intl, disney:s.disney, convention:s.convention, lake:s.lake};
+    write(S.store.updateDoc('trips/'+t.id, {name:v('tName'), destination:v('tDest'), start, nights:clampNights(v('tNights')), party:v('tParty'), tags, travelers}))
+      .then(() => { S.setup = null; toast('Trip saved'); }).catch(()=>{});
+  }
+});
+
+/* ---------- share, backup, restore ---------- */
+async function saveFile(name, obj, shareTitle){
+  const text = JSON.stringify(obj);
+  const file = new File([text], name, {type:'application/json'});
+  try {
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:shareTitle}); return; }
+  } catch(e){ if(e && e.name === 'AbortError') return; }
+  const url = URL.createObjectURL(file), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function readStore(){ try { return JSON.parse(lsGet('mctrips-local-v2')) || {trips:{}, packing:{}}; } catch(e){ return {trips:{}, packing:{}}; } }
+function exportTrip(){
+  const t = trip(); if(!t) return;
+  saveFile(`${slug(t.name)}.trip.json`, {app:'mctrips', kind:'trip', version:1, trips:{[t.id]:S.trips[t.id]}}, t.name);
+}
+function exportAll(){
+  const d = readStore(), n = Object.keys(d.trips||{}).length;
+  saveFile(`trips-backup-${todayISO()}.json`, {app:'mctrips', kind:'backup', version:1, trips:d.trips||{}, packing:d.packing||{}}, 'Trips backup')
+    .then(() => toast(`${plural(n,'trip')} in the backup`));
+}
+document.getElementById('importFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if(!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch(err){ toast('That file isn’t a trip file.'); return; }
+  if(!data || data.app !== 'mctrips' || typeof data.trips !== 'object'){ toast('That file isn’t a trip file.'); return; }
+  const ids = Object.keys(data.trips).filter(id => /^[A-Za-z0-9_\-.~:@+]+$/.test(id) && data.trips[id] && typeof data.trips[id] === 'object');
+  for(const id of ids){ const t = data.trips[id]; t.days = t.days || {}; t.travelers = Array.isArray(t.travelers) ? t.travelers : []; await S.store.setDoc('trips/'+id, t); }
+  if(data.kind === 'backup' && data.packing && typeof data.packing === 'object'){
+    for(const [pid, p] of Object.entries(data.packing)) if(p && typeof p === 'object' && /^[A-Za-z0-9_\-.~:@+]+$/.test(pid)) await S.store.setDoc('packing/'+pid, p);
+  }
+  if(!ids.length){ toast('No trips found in that file.'); return; }
+  S.view = 'trip'; S.tripId = null; selectTrip(ids[0]); S.tab = 'summary'; render(); window.scrollTo(0,0);
+  toast(ids.length === 1 ? `Opened ${data.trips[ids[0]].name || 'trip'}` : `Restored ${plural(ids.length,'trip')}`);
+});
+
+/* ---------- boot ---------- */
+(function boot(){
+  S.store = localStore();
+  try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+  S.store.watchTrips(o => {
+    S.trips = o; S.loaded = true;
+    if(!S.trips[S.tripId]) selectTrip(defaultTrip());
+    render();
+  });
+  render();
+  if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
