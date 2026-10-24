@@ -579,7 +579,8 @@ function renderSummary(t){
       <div class="chips">${travelers.map(x => `<span class="chip">${esc(x.name)} · ${x.kind==='kid'?'kid':'adult'}</span>`).join('') || '<span class="note">No travelers yet.</span>'}</div>
       ${t.party ? `<p class="note" style="margin:0">Traveling with ${esc(t.party)}</p>` : ''}
     </section>
-    <div class="bar"><h2 style="font-size:22px">Day by day</h2>${hasPh && wr ? `<span class="note">Gray items are suggestions. Tap one to fill it in.</span>` : ''}</div>
+    <div class="bar"><h2 style="font-size:22px">Day by day</h2>${wr ? `<button class="btn primary small" data-act="import">Add from confirmation</button>` : ''}</div>
+    ${hasPh && wr ? `<p class="note" style="margin:-6px 0 0">Gray items are suggestions. Tap one to fill it in, or add a flight, hotel or cruise confirmation and the app fills them in for you.</p>` : ''}
     <div class="days">${days.map(dd => {
       const day = (t.days||{})[dd.key] || {}, evs = sortEvents(day.events), isToday = dd.date && dd.date === today;
       return `<article class="day${isToday?' today':''}" id="day-${dd.key}">
@@ -772,7 +773,7 @@ function render(){
 }
 
 /* ---------- sheet (edit day / event) ---------- */
-function closeSheet(){ document.getElementById('sheetroot').innerHTML = ''; }
+function closeSheet(){ S.imp = null; document.getElementById('sheetroot').innerHTML = ''; }
 function dayName(t, key){ const dd = dayList(t).find(d => d.key === key); return dd && dd.date ? `${dow(dd.date)} ${fmtLong(dd.date)}` : `Day ${key}`; }
 function openSheet(kind, key, evId){
   const t = trip(); if(!t) return;
@@ -892,6 +893,7 @@ app.addEventListener('click', e => {
   if(act === 'new-trip'){ S.view = 'new'; S.wiz = newWiz(); S.formErr = {}; render(); window.scrollTo(0,0); return; }
   // trip views
   if(act === 'tab'){ S.tab = a.dataset.tab; S.confirm = null; S.formErr = {}; render(); window.scrollTo(0, 0); return; }
+  if(act === 'import') return openImport();
   if(act === 'edit-day') return openSheet('day', a.dataset.key);
   if(act === 'edit-ev') return openSheet('event', a.dataset.key, a.dataset.id);
   if(act === 'add-ev') return openSheet('event', a.dataset.key);
@@ -928,7 +930,7 @@ app.addEventListener('input', e => {
 });
 app.addEventListener('change', e => {
   const el = e.target, t = trip();
-  if(el.dataset.wiz === 'nights'){ S.wiz.nights = clampNights(el.value); render(); return; }
+  if(el.dataset.wiz === 'nights'){ S.wiz.nights = clampNights(el.value); setTimeout(render, 0); return; }
   if(el.dataset.wizAdd){ S.wiz[el.dataset.wizAdd] = el.checked; render(); return; }
   if(el.dataset.act === 'set-addon' && S.setup){ S.setup[el.dataset.k] = el.checked; return; }
   if(el.dataset.act === 'pick-trip'){ selectTrip(el.value); render(); return; }
@@ -961,6 +963,175 @@ app.addEventListener('submit', e => {
       .then(() => { S.setup = null; toast('Trip saved'); }).catch(()=>{});
   }
 });
+
+/* ---------- add from confirmation (Claude via /api/extract) ---------- */
+function openImport(){ S.imp = {stage:'input', text:'', file:null, fileName:'', error:'', needCode:!lsGet('mctrips-passcode')}; renderImport(); }
+function closeImport(){ S.imp = null; document.getElementById('sheetroot').innerHTML = ''; }
+function readFileB64(blob){ return new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(blob); }); }
+async function shrinkImage(file){
+  let src;
+  try { src = await createImageBitmap(file); }
+  catch(e){ src = await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = URL.createObjectURL(file); }); }
+  const w = src.width, h = src.height, k = Math.min(1, 2000 / Math.max(w, h));
+  const c = document.createElement('canvas'); c.width = Math.round(w*k); c.height = Math.round(h*k);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85));
+  return {mediaType:'image/jpeg', data: await readFileB64(blob)};
+}
+async function filePayload(file){
+  if(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)){
+    if(file.size > 3 * 1024 * 1024) throw {msg:'That PDF is over 3 MB. Try a screenshot of the confirmation instead.'};
+    return {mediaType:'application/pdf', data: await readFileB64(file)};
+  }
+  if(file.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp|gif)$/i.test(file.name)) return shrinkImage(file);
+  throw {msg:'Choose a photo, screenshot or PDF.'};
+}
+const IMP_ERRORS = {
+  bad_passcode:'That passcode didn’t match. Check it with whoever set up the app.',
+  not_configured:'The app isn’t connected to Claude yet. Add ANTHROPIC_API_KEY and FAMILY_PASSCODE in the Vercel project settings, then redeploy.',
+  empty:'Paste the confirmation or add a photo or PDF first.',
+  unsupported_file:'Choose a photo, screenshot or PDF.',
+  claude_unreachable:'Couldn’t reach Claude. Check your connection and try again.',
+  claude_error:'Claude couldn’t read that one. Try again, or try a screenshot instead.',
+  no_result:'Claude couldn’t read that one. Try again, or try a screenshot instead.'
+};
+async function runImport(){
+  const t = trip(), I = S.imp; if(!t || !I) return;
+  I.text = (document.getElementById('impText')?.value || '').trim();
+  const codeEl = document.getElementById('impCode');
+  if(codeEl){ const c = codeEl.value.trim(); if(!c){ I.error = 'Enter the family passcode.'; return renderImport(); } lsSet('mctrips-passcode', c); }
+  if(!I.text && !I.file){ I.error = IMP_ERRORS.empty; return renderImport(); }
+  I.error = ''; I.stage = 'loading'; renderImport();
+  try {
+    const payload = {text:I.text, trip:{start:t.start||'', nights:clampNights(t.nights), ...(t.tags||{})}};
+    if(I.file) payload.file = await filePayload(I.file);
+    const r = await fetch('api/extract', {method:'POST', headers:{'content-type':'application/json', 'x-family-passcode': lsGet('mctrips-passcode') || ''}, body:JSON.stringify(payload)});
+    let data = {}; try { data = await r.json(); } catch(e){}
+    if(!S.imp) return;
+    if(!r.ok){
+      if(r.status === 401){ lsSet('mctrips-passcode', ''); I.needCode = true; }
+      const code = data.error || (r.status === 404 ? 'not_configured' : r.status === 413 ? 'too_big' : 'claude_error');
+      I.error = code === 'too_big' ? 'That file is too large. Try a smaller screenshot.' : (IMP_ERRORS[code] || IMP_ERRORS.claude_error);
+      I.stage = 'input'; return renderImport();
+    }
+    I.needCode = false;
+    I.result = data; buildReview(t); I.stage = 'review'; renderImport();
+  } catch(e){
+    if(!S.imp) return;
+    I.error = e && e.msg ? e.msg : (navigator.onLine === false ? 'You’re offline. Connect and try again.' : IMP_ERRORS.claude_unreachable);
+    I.stage = 'input'; renderImport();
+  }
+}
+function buildReview(t){
+  const I = S.imp, res = I.result || {}, total = clampNights(t.nights) + 1;
+  let start = validDate(t.start) ? t.start : null; I.newStart = null;
+  const dated = (res.items||[]).map(i => i.date).concat((res.day_titles||[]).map(d => d.date)).filter(validDate).sort();
+  if(!start && dated.length){ start = dated[0]; I.newStart = start; }
+  const dayOf = (date, day) => validDate(date) && start ? daysBetween(start, date) + 1 : (day > 0 ? day : 1);
+  I.rows = (res.items||[]).map((it, i) => { const n = dayOf(it.date, it.day); return {...it, k:'i'+i, n, on: n >= 1 && n <= total}; })
+    .sort((a,b) => a.n - b.n || (a.time||'99:99').localeCompare(b.time||'99:99'));
+  I.titles = (res.day_titles||[]).map((d, i) => { const n = dayOf(d.date, d.day); return {...d, k:'t'+i, n, on: n >= 1 && n <= total}; });
+  I.outside = I.rows.concat(I.titles).filter(r => r.n < 1 || r.n > total).length;
+}
+function dayLabelFor(t, n){
+  const start = validDate(t.start) ? t.start : S.imp && S.imp.newStart;
+  return start ? `Day ${n} · ${dow(addDays(start, n-1))} ${fmtMD(addDays(start, n-1))}` : `Day ${n}`;
+}
+function renderImport(){
+  const I = S.imp, t = trip(); if(!I || !t) return;
+  const total = clampNights(t.nights) + 1;
+  let body = '';
+  if(I.stage === 'input' || I.stage === 'loading'){
+    const busy = I.stage === 'loading';
+    body = `<h3>Add from a confirmation</h3>
+      <p class="note" style="margin:0">Paste a flight, hotel, cruise, rental car or tour confirmation, or add a screenshot or PDF of it. You’ll review everything before it’s added.</p>
+      <div class="field"><label for="impText">Confirmation email</label><textarea id="impText" style="min-height:140px" placeholder="Paste the email text here"${busy?' disabled':''}>${esc(I.text)}</textarea></div>
+      <div class="formrow" style="align-items:center">
+        <label class="btn small" for="impFile" style="cursor:pointer">${I.file ? 'Change file' : 'Add photo, screenshot or PDF'}</label>
+        <input type="file" id="impFile" accept="image/*,application/pdf,.pdf" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)"${busy?' disabled':''}>
+        ${I.file ? `<span class="note" style="overflow-wrap:anywhere">${esc(I.fileName)} · <button type="button" class="linkbtn" data-imp="clear-file">Remove</button></span>` : ''}
+      </div>
+      ${I.needCode ? `<div class="field"><label for="impCode">Family passcode</label><input id="impCode" type="password" autocomplete="off" placeholder="Asked once on this phone"${busy?' disabled':''}></div>` : ''}
+      ${I.error ? `<p class="err" style="margin:0">${esc(I.error)}</p>` : ''}
+      <div class="formrow"><button class="btn primary" type="submit"${busy?' disabled':''}>${busy ? 'Reading it…' : 'Read confirmation'}</button><button type="button" class="btn ghost" data-imp="close">Cancel</button></div>`;
+  } else {
+    const opts = n => Array.from({length:total}, (_,i) => `<option value="${i+1}"${i+1===n?' selected':''}>${esc(dayLabelFor(t, i+1))}</option>`).join('') + (n < 1 || n > total ? `<option value="${n}" selected>Outside this trip</option>` : '');
+    const count = I.rows.filter(r => r.on).length + I.titles.filter(r => r.on).length;
+    body = `<h3>Found in your confirmation</h3>
+      ${I.result.summary ? `<p class="note" style="margin:0">${esc(I.result.summary)}</p>` : ''}
+      ${I.newStart ? `<div class="banner">This trip didn’t have dates yet. Adding these will start it on ${esc(dow(I.newStart).charAt(0) + dow(I.newStart).slice(1).toLowerCase())}, ${esc(fmtLong(I.newStart))}.</div>` : ''}
+      ${I.outside ? `<p class="note" style="margin:0">${I.outside === 1 ? '1 item falls' : I.outside + ' items fall'} outside this ${total}-day trip. Pick a day for ${I.outside === 1 ? 'it' : 'them'}, or lengthen the trip in Setup.</p>` : ''}
+      ${!I.rows.length && !I.titles.length ? `<p class="note">Nothing to add from that one.</p>` : ''}
+      ${I.titles.map(r => `<div class="item" style="align-items:flex-start;border-top:1px solid var(--line);padding-top:8px">
+          <input type="checkbox" id="imp-${r.k}" data-imp-on="${r.k}"${r.on?' checked':''} style="width:20px;height:20px;accent-color:var(--accent);margin-top:2px">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+            <label for="imp-${r.k}"><b>Day title:</b> ${esc(r.title)}</label>
+            <select data-imp-day="${r.k}" aria-label="Day" style="max-width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 8px">${opts(r.n)}</select>
+          </div></div>`).join('')}
+      ${I.rows.map(r => `<div class="item" style="align-items:flex-start;border-top:1px solid var(--line);padding-top:8px">
+          <input type="checkbox" id="imp-${r.k}" data-imp-on="${r.k}"${r.on?' checked':''} style="width:20px;height:20px;accent-color:var(--accent);margin-top:2px">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+            <label for="imp-${r.k}"><span class="mono" style="font-weight:700">${esc(fmtTime(r.time) || 'Anytime')}</span> · ${r.type && !['note','activity'].includes(r.type) ? `<span class="etype ${esc(r.type)}">${esc(typeLabel(r.type))}</span>` : ''}${esc(r.label)}</label>
+            ${r.notes ? `<span class="note" style="white-space:pre-line;overflow-wrap:anywhere">${esc(r.notes)}</span>` : ''}
+            <select data-imp-day="${r.k}" aria-label="Day" style="max-width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 8px">${opts(r.n)}</select>
+          </div></div>`).join('')}
+      <div class="formrow" style="border-top:1px solid var(--line);padding-top:12px">
+        <button class="btn primary" type="submit"${count?'':' disabled'}>Add ${plural(count,'item')} to the trip</button>
+        <button type="button" class="btn ghost" data-imp="back">Try another</button>
+        <button type="button" class="btn ghost" data-imp="close">Cancel</button>
+      </div>
+      <p class="note" style="margin:0">Matching gray suggestions on those days are replaced.</p>`;
+  }
+  document.getElementById('sheetroot').innerHTML = `<div class="scrim" data-imp-scrim><form class="sheet" role="dialog" aria-modal="true" aria-label="Add from a confirmation" data-imp-form>${body}</form></div>`;
+  if(I.stage === 'input'){ const ta = document.getElementById('impText'); if(ta && !I.text && !I.file) ta.focus(); }
+}
+function applyImport(){
+  const t = trip(), I = S.imp; if(!t || !I) return;
+  const total = clampNights(t.nights) + 1, days = clone(t.days || {}), used = new Set();
+  const dayObj = n => days[String(n)] || (days[String(n)] = {title:'', weather:'', dress:'', events:[]});
+  let added = 0, skipped = 0;
+  for(const r of I.rows){
+    if(!r.on) continue;
+    if(r.n < 1 || r.n > total){ skipped++; continue; }
+    const d = dayObj(r.n); d.events = d.events || [];
+    const ev = {id:'e'+rid(), time:r.time, type:r.type, label:r.label, notes:r.notes};
+    const i = ['flight','hotel','ship'].includes(r.type) ? d.events.findIndex(e => e.ph && e.type === r.type && !used.has(e.id)) : -1;
+    if(i >= 0){ used.add(ev.id); d.events.splice(i, 1, ev); } else d.events.push(ev);
+    used.add(ev.id); added++;
+  }
+  for(const r of I.titles){
+    if(!r.on) continue;
+    if(r.n < 1 || r.n > total){ skipped++; continue; }
+    dayObj(r.n).title = r.title; added++;
+  }
+  const patch = {days};
+  if(I.newStart) patch.start = I.newStart;
+  write(S.store.updateDoc('trips/'+t.id, patch)).then(() => toast(`Added ${plural(added,'item')}${skipped ? ` · ${skipped} outside the trip skipped` : ''}`)).catch(()=>{});
+  closeImport();
+}
+const sheetRoot = document.getElementById('sheetroot');
+sheetRoot.addEventListener('click', e => {
+  if(!S.imp) return;
+  if(e.target.matches('[data-imp-scrim]') && S.imp.stage !== 'loading') return closeImport();
+  const a = e.target.closest('[data-imp]'); if(!a) return;
+  const act = a.dataset.imp;
+  if(act === 'close') return closeImport();
+  if(act === 'back'){ S.imp.stage = 'input'; S.imp.error = ''; renderImport(); return; }
+  if(act === 'clear-file'){ S.imp.text = document.getElementById('impText')?.value || ''; S.imp.file = null; S.imp.fileName = ''; renderImport(); }
+});
+sheetRoot.addEventListener('change', e => {
+  const I = S.imp; if(!I) return;
+  const el = e.target;
+  if(el.id === 'impFile' && el.files && el.files[0]){ I.text = document.getElementById('impText')?.value || ''; I.file = el.files[0]; I.fileName = el.files[0].name || 'Photo'; I.error = ''; renderImport(); return; }
+  const find = k => (I.rows||[]).concat(I.titles||[]).find(r => r.k === k);
+  if(el.dataset.impOn){ const r = find(el.dataset.impOn); if(r){ r.on = el.checked; renderImport(); } return; }
+  if(el.dataset.impDay){ const r = find(el.dataset.impDay); if(r){ r.n = Number(el.value); if(r.n >= 1 && r.n <= clampNights(trip().nights)+1) r.on = true; renderImport(); } }
+});
+sheetRoot.addEventListener('submit', e => {
+  if(!e.target.matches('[data-imp-form]')) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if(S.imp.stage === 'input') runImport(); else if(S.imp.stage === 'review') applyImport();
+}, true);
 
 /* ---------- share, backup, restore ---------- */
 async function saveFile(name, obj, shareTitle){
