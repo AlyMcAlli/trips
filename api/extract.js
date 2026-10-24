@@ -129,7 +129,20 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     return res.status(502).json({ error: 'claude_unreachable' });
   }
-  if (!r.ok) return res.status(502).json({ error: 'claude_error', detail: (data && data.error && data.error.message) || ('HTTP ' + r.status) });
+  if (!r.ok) {
+    const msg = (data && data.error && data.error.message) || ('HTTP ' + r.status);
+    const kind = (data && data.error && data.error.type) || '';
+    console.error('Claude API error', r.status, kind, msg);
+    let code = 'claude_error';
+    if (r.status === 401 || kind === 'authentication_error') code = 'bad_key';
+    else if (r.status === 403 || kind === 'permission_error') code = 'bad_key';
+    else if (/credit balance|billing|spend limit|usage limit/i.test(msg)) code = 'no_credit';
+    else if (r.status === 404 || kind === 'not_found_error') code = 'model_unavailable';
+    else if (r.status === 429) code = 'rate_limited';
+    else if (r.status === 529 || kind === 'overloaded_error') code = 'busy';
+    else if (r.status === 413 || /too large|too long|maximum/i.test(msg)) code = 'too_big';
+    return res.status(502).json({ error: code, detail: msg });
+  }
 
   const use = (data.content || []).find(b => b.type === 'tool_use');
   if (!use || !use.input) return res.status(502).json({ error: 'no_result' });
