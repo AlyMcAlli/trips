@@ -118,10 +118,10 @@ module.exports = async function handler(req, res) {
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 4096,
-        system: SYSTEM,
+        max_tokens: 8000,
+        system: SYSTEM + '\n\nAlways answer by calling the add_to_trip tool exactly once. Do not reply with plain text.',
         tools: [TOOL],
-        tool_choice: { type: 'tool', name: TOOL.name },
+        tool_choice: { type: 'auto' },
         messages: [{ role: 'user', content }]
       })
     });
@@ -144,9 +144,19 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: code, detail: msg });
   }
 
-  const use = (data.content || []).find(b => b.type === 'tool_use');
-  if (!use || !use.input) return res.status(502).json({ error: 'no_result' });
-  const out = use.input;
+  const blocks = data.content || [];
+  const use = blocks.find(b => b.type === 'tool_use' && b.input);
+  let out = use ? use.input : null;
+  if (!out) {
+    // Fallback: the model answered in text. Pull the first JSON object out of it.
+    const txt = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
+    if (a >= 0 && z > a) { try { out = JSON.parse(txt.slice(a, z + 1)); } catch (e) { out = null; } }
+  }
+  if (!out) {
+    console.error('Claude returned no plans', data.stop_reason, JSON.stringify(blocks).slice(0, 500));
+    return res.status(502).json({ error: 'no_result' });
+  }
   const clean = s => String(s || '').slice(0, 2000);
   return res.status(200).json({
     summary: clean(out.summary),
