@@ -733,6 +733,11 @@ function renderSetup(t){
     </div>
   </section>
   ${wr ? `<section class="panel">
+    <h3>Make a copy</h3>
+    <p class="note" style="margin:0">Copies the whole trip, every day’s plans included, as a separate trip. Change what you need, like the travelers or a few plans, then use Send this trip. Packing checkmarks aren’t copied.</p>
+    <div><button type="button" class="btn small" data-act="dup-trip">Make a copy of this trip</button></div>
+  </section>
+  <section class="panel">
     <h3>Start the summary over</h3>
     <p class="note" style="margin:0">Replaces every day’s plans with fresh suggestions for this trip type and length. Packing checklists aren’t affected.</p>
     <div>${S.confirm==='rebuild' ? `<span class="formrow"><span class="note">Replace all plans?</span><button class="btn small danger" data-act="rebuild-yes">Replace plans</button><button class="btn small ghost" data-act="cancel">Keep them</button></span>`
@@ -919,6 +924,16 @@ app.addEventListener('click', e => {
     const fresh = genDays({...tg, nights:clampNights(t.nights)});
     write(S.store.setDoc('trips/'+t.id, Object.assign(clone(S.trips[t.id]), {days:fresh}))).then(() => toast('Summary rebuilt')).catch(()=>{}); render(); return; }
   if(act === 'export-trip') return exportTrip();
+  if(act === 'dup-trip'){
+    const src = clone(S.trips[t.id]), name = `${t.name || 'Trip'} (copy)`;
+    const id = slug(name).slice(0,30) + '-' + rid();
+    Object.assign(src, {name, createdAt:Date.now()});
+    write(S.store.setDoc('trips/'+id, src)).then(() => {
+      selectTrip(id); S.tab = 'setup'; render(); window.scrollTo(0,0);
+      toast('Copy made. Rename it and change what you need.');
+    }).catch(()=>{});
+    return;
+  }
   if(act === 'export-all') return exportAll();
   if(act === 'del-trip'){ S.confirm = 'delete-trip'; render(); return; }
   if(act === 'del-trip-yes'){ const id = t.id; S.confirm = null; lsSet('mctrips-trip',''); write(S.store.deleteDoc('trips/'+id)).then(() => toast('Trip deleted')).catch(()=>{}); return; }
