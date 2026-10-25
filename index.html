@@ -71,8 +71,19 @@ h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1
 .tripsel select{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:100%}
 
 /* Tabs */
-.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
-.tab{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-weight:600;color:var(--muted);white-space:nowrap}
+.tabs{display:flex;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto;border:0;background:transparent;padding:9px 8px;border-radius:9px;font-weight:600;color:var(--muted);white-space:nowrap}
+@media (max-width:420px){ .tab{padding:8px 5px;font-size:13.5px} }
+.countlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 14px}
+.countrow{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.countn{flex:none;min-width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;padding:0 6px}
+.ofgrid{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}
+.ofgrid dt{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-top:2px}
+.ofgrid dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.day.tap{cursor:pointer}
+.day.tap:hover{border-color:var(--accent)}
+.qty{display:inline-block;margin-left:6px;font-family:var(--f-mono);font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 7px;vertical-align:1px;white-space:nowrap}
 .tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 
@@ -420,7 +431,7 @@ function write(p){
 }
 
 /* ---------- packing list builder ---------- */
-function buildList(t, trav){
+function buildList(t, trav, opts){
   const tags = t.tags || {};
   const pk = (t.id && S.packing[pkId(t.id, trav.id)]) || {};
   const hidden = pk.hidden || {}, checked = pk.checked || {};
@@ -436,6 +447,18 @@ function buildList(t, trav){
     let s = secs.find(x => x.bag === c.bag && x.cat === c.cat);
     if(!s){ s = {bag:c.bag, cat:c.cat || 'My extras', items:[]}; secs.push(s); }
     s.items.push({id:c.id, name:c.name, custom:true});
+  }
+  if(!(opts && opts.noOutfit)){
+    const counts = Array.isArray(pk.counts) ? pk.counts : [];
+    const byId = {}; secs.forEach(s => s.items.forEach(i => byId[i.id] = i));
+    for(const c of counts){
+      const hit = c.item_id && byId[c.item_id];
+      if(hit){ hit.count = c.count; hit.countNote = c.note; continue; }
+      const bag = BAG_ORDER.includes(c.bag) ? c.bag : 'checked';
+      let s = secs.find(x => x.bag === bag && x.cat === 'From outfit plan');
+      if(!s){ s = {bag, cat:'From outfit plan', items:[]}; secs.push(s); }
+      s.items.push({id:'of.' + slug(c.name), name:c.name, count:c.count, countNote:c.note, outfit:true});
+    }
   }
   const removed = [];
   for(const s of secs){
@@ -566,7 +589,7 @@ function renderHeader(t){
   </header>`;
 }
 function renderTabs(){
-  const tabs = [['summary','Summary'],['schedule','Schedule'],['packing','Packing'],['setup','Setup']];
+  const tabs = [['summary','Summary'],['schedule','Schedule'],['outfits','Outfits'],['packing','Packing'],['setup','Setup']];
   return `<nav class="tabs" role="tablist">${tabs.map(([k,l]) => `<button class="tab" role="tab" id="tab-${k}" aria-selected="${S.tab===k}" data-act="tab" data-tab="${k}">${l}</button>`).join('')}</nav>`;
 }
 const sortEvents = evs => (evs||[]).slice().sort((a,b) => (a.time||'99:99').localeCompare(b.time||'99:99'));
@@ -659,7 +682,7 @@ function renderPacking(t){
       if(!shown.length) return '';
       return `<section class="cat"><h4><span>${esc(s.cat)}</span><span class="mono">${s.items.filter(i=>i.done).length}/${s.items.length}</span></h4>
         ${shown.map(i => { const cid = 'chk-' + slug(i.id) + '-' + i.id.length;
-          return `<div class="item${i.done?' done':''}"><label for="${cid}"><input type="checkbox" id="${cid}" data-act="check" data-id="${esc(i.id)}"${i.done?' checked':''}${wr?'':' disabled'}><span class="nm">${esc(i.name)}${i.custom?'<span class="mine">ADDED</span>':''}</span></label>
+          return `<div class="item${i.done?' done':''}"><label for="${cid}"><input type="checkbox" id="${cid}" data-act="check" data-id="${esc(i.id)}"${i.done?' checked':''}${wr?'':' disabled'}><span class="nm">${esc(i.name)}${i.count ? `<span class="qty" title="${esc(i.countNote || 'From the outfit plan')}">pack ${i.count}</span>` : ''}${i.custom?'<span class="mine">ADDED</span>':''}</span></label>
           ${wr ? `<button class="x" data-act="${i.custom?'del-custom':'hide'}" data-id="${esc(i.id)}" aria-label="Remove ${esc(i.name)} from ${esc(trav.name)}’s list" title="Remove from this list">×</button>` : ''}</div>`; }).join('')}
       </section>`; }).join('');
     return `<div class="bagblock"><div class="bagtag" style="--bagc:var(--bag-${b})"><span class="tagshape">${BAGS[b].label}</span><span class="cnt">${done}/${items.length}</span></div>
@@ -675,6 +698,7 @@ function renderPacking(t){
       </div>
       <label class="toggle" for="hidePacked"><input type="checkbox" id="hidePacked" data-act="hide-packed"${S.hidePacked?' checked':''}> Hide packed</label>
     </div>
+    ${Array.isArray(pkOf(t, trav).counts) && pkOf(t, trav).counts.length ? `<p class="note" style="margin:0"><span class="qty" style="margin:0 4px 0 0">pack #</span>numbers come from ${esc(trav.name)}’s outfit plan.${pkOf(t, trav).countsStale ? ' Outfits changed since they were counted; update them on the Outfits tab.' : ''}</p>` : ''}
     ${blocks || '<p class="note">Nothing on this list yet.</p>'}
     ${wr ? `<div class="panel">
       <h3>Add to ${esc(trav.name)}’s list</h3>
@@ -758,7 +782,12 @@ function renderSetup(t){
 function render(){
   const app = document.getElementById('app');
   const kept = {};
-  app.querySelectorAll('[data-keep]').forEach(el => { kept[el.id] = el.type==='checkbox' ? el.checked : el.value; });
+  app.querySelectorAll('[data-keep]').forEach(el => {
+    // Keep only what the person changed, so saved values can still refresh the form.
+    if(el.type === 'checkbox'){ if(el.checked !== el.defaultChecked) kept[el.id] = el.checked; }
+    else if(el.tagName === 'SELECT'){ const d = [...el.options].find(o => o.defaultSelected); if(!d || el.value !== d.value) kept[el.id] = el.value; }
+    else if(el.value !== el.defaultValue) kept[el.id] = el.value;
+  });
   const keepKey = S.view + '|' + S.tripId + '|' + S.tab;
   const active = document.activeElement && document.activeElement.id;
   const sx = window.scrollX, sy = window.scrollY;
@@ -776,7 +805,7 @@ function render(){
   } else {
     html += renderHeader(t) + renderTabs();
     html += `<main role="tabpanel" aria-labelledby="tab-${S.tab}" style="display:flex;flex-direction:column;gap:14px">${
-      S.tab==='schedule' ? renderSchedule(t) : S.tab==='packing' ? renderPacking(t) : S.tab==='setup' ? renderSetup(t) : renderSummary(t)}</main>`;
+      S.tab==='schedule' ? renderSchedule(t) : S.tab==='outfits' ? renderOutfits(t) : S.tab==='packing' ? renderPacking(t) : S.tab==='setup' ? renderSetup(t) : renderSummary(t)}</main>`;
   }
   app.innerHTML = html;
   if(render.key === keepKey) for(const [id,v] of Object.entries(kept)){ const el = document.getElementById(id); if(el){ if(el.type==='checkbox') el.checked = v; else el.value = v; } }
@@ -787,7 +816,7 @@ function render(){
 }
 
 /* ---------- sheet (edit day / event) ---------- */
-function closeSheet(){ S.imp = null; document.getElementById('sheetroot').innerHTML = ''; }
+function closeSheet(){ S.imp = null; S.ofi = null; S.ofEdit = null; S.ofCode = null; document.getElementById('sheetroot').innerHTML = ''; }
 function dayName(t, key){ const dd = dayList(t).find(d => d.key === key); return dd && dd.date ? `${dow(dd.date)} ${fmtLong(dd.date)}` : `Day ${key}`; }
 function openSheet(kind, key, evId){
   const t = trip(); if(!t) return;
@@ -853,7 +882,7 @@ document.getElementById('sheetroot').addEventListener('submit', e => {
 });
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && document.querySelector('.scrim')) closeSheet();
-  if((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('li[role=button]')){ e.preventDefault(); e.target.click(); }
+  if((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role=button][data-act]')){ e.preventDefault(); e.target.click(); }
 });
 
 /* ---------- actions ---------- */
@@ -908,6 +937,9 @@ app.addEventListener('click', e => {
   // trip views
   if(act === 'tab'){ S.tab = a.dataset.tab; S.confirm = null; S.formErr = {}; render(); window.scrollTo(0, 0); return; }
   if(act === 'import') return openImport();
+  if(act === 'of-edit') return openOfEdit(a.dataset.key);
+  if(act === 'of-paste') return openOfPaste();
+  if(act === 'of-count') return runCounts();
   if(act === 'edit-day') return openSheet('day', a.dataset.key);
   if(act === 'edit-ev') return openSheet('event', a.dataset.key, a.dataset.id);
   if(act === 'add-ev') return openSheet('event', a.dataset.key);
@@ -962,6 +994,11 @@ app.addEventListener('change', e => {
   if(el.dataset.act === 'pick-trip'){ selectTrip(el.value); render(); return; }
   if(el.dataset.act === 'hide-packed'){ S.hidePacked = el.checked; render(); return; }
   if(el.dataset.act === 'compact'){ S.compact = el.checked; render(); return; }
+  if(el.hasAttribute && el.hasAttribute('data-of-laundry')){
+    const trav = currentTrav(t), pk = pkOf(t, trav), v = el.value.trim();
+    if(v !== (pk.laundry || '')) packWrite(t, trav, {laundry:v, countsStale: Array.isArray(pk.counts) && pk.counts.length > 0}).catch(()=>{});
+    return;
+  }
   if(el.dataset.act === 'check'){
     const trav = (t.travelers||[]).find(x => x.id === S.travelerId); if(!trav) return;
     packWrite(t, trav, {checked:{[el.dataset.id]:el.checked}}).catch(() => render());
@@ -1170,6 +1207,220 @@ sheetRoot.addEventListener('submit', e => {
   if(!e.target.matches('[data-imp-form]')) return;
   e.preventDefault(); e.stopImmediatePropagation();
   if(S.imp.stage === 'input') runImport(); else if(S.imp.stage === 'review') applyImport();
+}, true);
+
+/* ---------- outfits ---------- */
+const OF_FIELDS = [['daytime','Daytime'],['evening','Evening'],['shoes','Shoes'],['foundations','Foundations']];
+const OF_HINTS = {daytime:'Navy sweatsuit · tank top', evening:'Formal dress · cardigan', shoes:'Gold sandals', foundations:'Garments, slips, bras, socks'};
+const hasOutfit = o => !!o && OF_FIELDS.some(([k]) => (o[k] || '').trim());
+function currentTrav(t){
+  const travs = t.travelers || [];
+  if(!travs.length) return null;
+  if(!travs.find(x => x.id === S.travelerId)){ const saved = lsGet('mctrips-trav-'+t.id); S.travelerId = travs.find(x => x.id === saved) ? saved : travs[0].id; }
+  return travs.find(x => x.id === S.travelerId);
+}
+const pkOf = (t, trav) => S.packing[pkId(t.id, trav.id)] || {};
+function claudeDays(t){
+  return dayList(t).map(d => { const day = (t.days||{})[d.key] || {}; return {day:d.n, date:d.date || '', title:day.title || '', dinner_dress:day.dress || ''}; });
+}
+function claudeItems(t, trav){
+  return buildList(t, trav, {noOutfit:true}).secs.flatMap(s => s.items.map(i => ({id:i.id, name:i.name, category:s.cat, bag:s.bag})));
+}
+function tripCtx(t){ return {start:t.start||'', nights:clampNights(t.nights), ...(t.tags||{})}; }
+async function callClaude(payload){
+  const r = await fetch('api/extract', {method:'POST', headers:{'content-type':'application/json', 'x-family-passcode': lsGet('mctrips-passcode') || ''}, body:JSON.stringify(payload)});
+  let data = {}; try { data = await r.json(); } catch(e){}
+  if(r.ok) return {ok:true, data};
+  if(r.status === 401) lsSet('mctrips-passcode', '');
+  const code = data.error || (r.status === 404 ? 'not_configured' : r.status === 413 ? 'too_big' : r.status === 504 ? 'timeout' : r.status >= 500 ? 'server_error' : 'claude_error');
+  return {ok:false, status:r.status, error:(IMP_ERRORS[code] || IMP_ERRORS.claude_error) + (code === 'claude_error' && data.detail ? ` (Claude said: ${data.detail})` : '')};
+}
+
+function renderOutfits(t){
+  const travs = t.travelers || [];
+  if(!travs.length) return `<div class="emptystate"><h3>Who’s getting dressed?</h3><p class="muted">Add travelers in Setup and each person gets their own outfit plan.</p>
+    <button class="btn primary" data-act="tab" data-tab="setup">Add travelers</button></div>`;
+  const trav = currentTrav(t), wr = writable(), pk = pkOf(t, trav), outfits = pk.outfits || {}, days = dayList(t);
+  const people = travs.map(x => { const o = pkOf(t, x).outfits || {}, n = days.filter(d => hasOutfit(o[d.key])).length;
+    return `<button class="person" aria-pressed="${x.id===S.travelerId}" data-act="pick-trav" data-id="${esc(x.id)}">${ring(n, days.length)}
+      <span><span class="pn">${esc(x.name)}</span><br><span class="pk mono">${n}/${days.length} days</span></span></button>`; }).join('');
+  const planned = days.filter(d => hasOutfit(outfits[d.key])).length;
+  const counts = Array.isArray(pk.counts) ? pk.counts : [];
+  const countsPanel = counts.length ? `<section class="panel">
+      <div class="bar"><h3>What to pack</h3>${pk.countsStale ? `<span class="chip" style="background:var(--tag);color:var(--tag-ink)">Outfits changed</span>` : ''}</div>
+      <div class="countlist">${counts.map(c => `<div class="countrow"><span class="countn mono">${c.count}</span><span style="min-width:0"><b>${esc(c.name)}</b>${c.note ? `<br><span class="note">${esc(c.note)}</span>` : ''}</span></div>`).join('')}</div>
+      <p class="note" style="margin:0">${pk.countsStale ? 'You changed outfits since these were counted. Tap Update packing counts.' : `These numbers show on ${esc(trav.name)}’s packing list.`}</p>
+    </section>` : '';
+  const cards = days.map(dd => {
+    const day = (t.days||{})[dd.key] || {}, o = outfits[dd.key] || {}, any = hasOutfit(o);
+    return `<article class="day ofday${wr ? ' tap' : ''}"${wr ? ` data-act="of-edit" data-key="${dd.key}" role="button" tabindex="0" aria-label="Edit outfits for day ${dd.n}"` : ''}>
+      <div class="dstamp">${dd.date ? `<span class="dw">${dow(dd.date)}</span><span class="dd">${fmtMD(dd.date)}</span><span class="dn">Day ${dd.n}</span>` : `<span class="dw">DAY</span><span class="dd big">${dd.n}</span>`}</div>
+      <div class="dbody">
+        <div class="dhead"><h3>${esc(day.title || 'Day ' + dd.n)}</h3>${day.dress ? `<span class="chip dress">Dinner: ${esc(day.dress)}</span>` : ''}</div>
+        ${any ? `<dl class="ofgrid">${OF_FIELDS.filter(([k]) => (o[k]||'').trim()).map(([k,l]) => `<dt>${l}</dt><dd>${esc(o[k])}</dd>`).join('')}</dl>`
+          : `<p class="empty-day">${wr ? 'Tap to plan outfits for this day.' : 'No outfits planned.'}</p>`}
+      </div></article>`;
+  }).join('');
+  return `<div class="people">${people}</div>
+    ${wr ? `<section class="panel">
+      <div class="formrow">
+        <button type="button" class="btn primary small" data-act="of-paste">Paste an outfit plan</button>
+        <button type="button" class="btn small" data-act="of-count"${planned && !S.counting ? '' : ' disabled'}>${S.counting ? 'Counting…' : 'Update packing counts'}</button>
+      </div>
+      <div class="field" style="flex:none"><label for="ofLaundry">Laundry and re-wear plan</label>
+        <input id="ofLaundry" data-keep data-of-laundry value="${esc(pk.laundry || '')}" placeholder="e.g. Laundry on day 4; re-wear lounge sets and leggings" autocomplete="off"></div>
+      <p class="note" style="margin:0">Claude uses this to work out how many tops, pants, dresses and garments ${esc(trav.name)} needs.</p>
+    </section>` : ''}
+    ${countsPanel}
+    <div class="days">${cards}</div>`;
+}
+
+/* outfit sheets: edit a day, paste a plan, ask for the passcode */
+function openOfEdit(key){
+  const t = trip(), trav = currentTrav(t); if(!t || !trav) return;
+  const o = (pkOf(t, trav).outfits || {})[key] || {}, day = (t.days||{})[key] || {};
+  S.ofEdit = {key};
+  document.getElementById('sheetroot').innerHTML = `<div class="scrim" data-of-scrim><form class="sheet" role="dialog" aria-modal="true" data-of-form="day">
+    <h3>${esc(trav.name)} · ${esc(dayName(t, key))}</h3>
+    ${day.title || day.dress ? `<p class="note" style="margin:0">${esc(day.title || '')}${day.title && day.dress ? ' · ' : ''}${day.dress ? 'Dinner: ' + esc(day.dress) : ''}</p>` : ''}
+    ${OF_FIELDS.map(([k,l]) => `<div class="field"><label for="of-${k}">${l}</label><textarea id="of-${k}" style="min-height:56px" placeholder="${esc(OF_HINTS[k])}">${esc(o[k] || '')}</textarea></div>`).join('')}
+    <div class="formrow"><button class="btn primary" type="submit">Save</button><button type="button" class="btn ghost" data-of="close">Cancel</button></div>
+  </form></div>`;
+  const first = document.getElementById('of-daytime'); if(first) first.focus();
+}
+function openOfPaste(){
+  const t = trip(), trav = currentTrav(t); if(!t || !trav) return;
+  S.ofi = {stage:'input', text:'', file:null, fileName:'', error:'', needCode:!lsGet('mctrips-passcode'), travId:trav.id};
+  renderOfPaste();
+}
+function renderOfPaste(){
+  const I = S.ofi, t = trip(); if(!I || !t) return;
+  const trav = (t.travelers||[]).find(x => x.id === I.travId); if(!trav) return;
+  let body;
+  if(I.stage !== 'review'){
+    const busy = I.stage === 'loading';
+    body = `<h3>Paste ${esc(trav.name)}’s outfit plan</h3>
+      <p class="note" style="margin:0">Paste a day-by-day outfit plan, or add a screenshot or PDF of one. Claude sorts it into the trip’s days and works out how many of each thing to pack. You’ll see it before it’s saved.</p>
+      <div class="field"><label for="ofText">Outfit plan</label><textarea id="ofText" style="min-height:160px" placeholder="Fri Oct 30 · Embark: shorts + Mickey shirt, Tevas…"${busy?' disabled':''}>${esc(I.text)}</textarea></div>
+      <div class="formrow" style="align-items:center">
+        <label class="btn small" for="ofFile" style="cursor:pointer">${I.file ? 'Change file' : 'Add screenshot or PDF'}</label>
+        <input type="file" id="ofFile" accept="image/*,application/pdf,.pdf" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)"${busy?' disabled':''}>
+        ${I.file ? `<span class="note" style="overflow-wrap:anywhere">${esc(I.fileName)} · <button type="button" class="linkbtn" data-of="clear-file">Remove</button></span>` : ''}
+      </div>
+      ${I.needCode ? `<div class="field"><label for="ofCode">Family passcode</label><input id="ofCode" type="password" autocomplete="off" placeholder="Asked once on this phone"${busy?' disabled':''}></div>` : ''}
+      ${I.error ? `<p class="err" style="margin:0">${esc(I.error)}</p>` : ''}
+      <div class="formrow"><button class="btn primary" type="submit"${busy?' disabled':''}>${busy ? 'Reading it… (up to a minute)' : 'Read outfit plan'}</button><button type="button" class="btn ghost" data-of="close">Cancel</button></div>`;
+  } else {
+    const R = I.result, total = clampNights(t.nights) + 1;
+    const days = (R.days || []).filter(d => d.day >= 1 && d.day <= total);
+    const outside = (R.days || []).length - days.length;
+    const existing = pkOf(t, trav).outfits || {};
+    const replacing = days.filter(d => hasOutfit(existing[String(d.day)])).length;
+    body = `<h3>${esc(trav.name)}’s outfits</h3>
+      ${R.summary ? `<p class="note" style="margin:0">${esc(R.summary)}</p>` : ''}
+      ${replacing ? `<div class="banner">This replaces the outfits already planned on ${plural(replacing,'day')}.</div>` : ''}
+      ${outside ? `<p class="note" style="margin:0">${outside === 1 ? '1 day falls' : outside + ' days fall'} outside this ${total}-day trip and won’t be saved.</p>` : ''}
+      ${!days.length ? `<p class="note">No days found in that plan.</p>` : ''}
+      <div style="display:flex;flex-direction:column;gap:0">${days.map(d => `<div style="border-top:1px solid var(--line);padding:8px 0">
+        <b>${esc(dayLabelFor(t, d.day))}</b>
+        <dl class="ofgrid" style="margin-top:4px">${OF_FIELDS.filter(([k]) => (d[k]||'').trim()).map(([k,l]) => `<dt>${l}</dt><dd>${esc(d[k])}</dd>`).join('')}</dl></div>`).join('')}</div>
+      ${(R.counts||[]).length ? `<div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px">
+        <b>What to pack</b>
+        <div class="countlist">${R.counts.map(c => `<div class="countrow"><span class="countn mono">${c.count}</span><span style="min-width:0"><b>${esc(c.name)}</b>${c.note ? `<br><span class="note">${esc(c.note)}</span>` : ''}</span></div>`).join('')}</div></div>` : ''}
+      ${R.laundry_note ? `<p class="note" style="margin:0"><b>Laundry:</b> ${esc(R.laundry_note)}</p>` : ''}
+      <div class="formrow" style="border-top:1px solid var(--line);padding-top:12px">
+        <button class="btn primary" type="submit"${days.length ? '' : ' disabled'}>Save to ${esc(trav.name)}’s outfits</button>
+        <button type="button" class="btn ghost" data-of="back">Try another</button>
+        <button type="button" class="btn ghost" data-of="close">Cancel</button>
+      </div>`;
+  }
+  document.getElementById('sheetroot').innerHTML = `<div class="scrim" data-of-scrim><form class="sheet" role="dialog" aria-modal="true" aria-label="Paste an outfit plan" data-of-form="paste">${body}</form></div>`;
+  if(I.stage === 'input' && !I.text && !I.file){ const ta = document.getElementById('ofText'); if(ta) ta.focus(); }
+}
+async function runOfPaste(){
+  const I = S.ofi, t = trip(); if(!I || !t) return;
+  const trav = (t.travelers||[]).find(x => x.id === I.travId); if(!trav) return;
+  I.text = (document.getElementById('ofText')?.value || '').trim();
+  const codeEl = document.getElementById('ofCode');
+  if(codeEl){ const c = codeEl.value.trim(); if(!c){ I.error = 'Enter the family passcode.'; return renderOfPaste(); } lsSet('mctrips-passcode', c); }
+  if(!I.text && !I.file){ I.error = 'Paste the outfit plan or add a screenshot or PDF first.'; return renderOfPaste(); }
+  I.error = ''; I.stage = 'loading'; renderOfPaste();
+  try {
+    const pk = pkOf(t, trav);
+    const payload = {mode:'outfits', text:I.text, trip:tripCtx(t), traveler:{name:trav.name, kind:trav.kind}, days:claudeDays(t), laundry:pk.laundry || '', items:claudeItems(t, trav)};
+    if(I.file) payload.file = await filePayload(I.file);
+    const res = await callClaude(payload);
+    if(S.ofi !== I) return;
+    if(!res.ok){ if(res.status === 401) I.needCode = true; I.error = res.error; I.stage = 'input'; return renderOfPaste(); }
+    I.needCode = false; I.result = res.data; I.stage = 'review'; renderOfPaste();
+  } catch(e){
+    if(S.ofi !== I) return;
+    I.error = e && e.msg ? e.msg : (navigator.onLine === false ? 'You’re offline. Connect and try again.' : IMP_ERRORS.claude_unreachable);
+    I.stage = 'input'; renderOfPaste();
+  }
+}
+function applyOfPaste(){
+  const I = S.ofi, t = trip(); if(!I || !t) return;
+  const trav = (t.travelers||[]).find(x => x.id === I.travId); if(!trav) return;
+  const R = I.result, total = clampNights(t.nights) + 1, outfits = {};
+  for(const d of (R.days || [])) if(d.day >= 1 && d.day <= total) outfits[String(d.day)] = {daytime:d.daytime||'', evening:d.evening||'', shoes:d.shoes||'', foundations:d.foundations||''};
+  const pk = pkOf(t, trav), patch = {outfits, counts:R.counts || [], countsStale:false};
+  if(!pk.laundry && R.laundry_note) patch.laundry = R.laundry_note;
+  S.travelerId = trav.id;
+  packWrite(t, trav, patch).then(() => toast(`Saved ${plural(Object.keys(outfits).length,'day')} of outfits${(R.counts||[]).length ? ' and updated packing counts' : ''}`)).catch(()=>{});
+  closeSheet();
+}
+function askCode(then){
+  S.ofCode = {then};
+  document.getElementById('sheetroot').innerHTML = `<div class="scrim" data-of-scrim><form class="sheet" role="dialog" aria-modal="true" data-of-form="code">
+    <h3>Family passcode</h3>
+    <p class="note" style="margin:0">Asked once on this phone, so the app can use Claude.</p>
+    <div class="field"><label for="ofCode2">Passcode</label><input id="ofCode2" type="password" autocomplete="off"></div>
+    <div class="formrow"><button class="btn primary" type="submit">Continue</button><button type="button" class="btn ghost" data-of="close">Cancel</button></div>
+  </form></div>`;
+  document.getElementById('ofCode2').focus();
+}
+async function runCounts(){
+  const t = trip(), trav = t && currentTrav(t); if(!t || !trav || S.counting) return;
+  if(!lsGet('mctrips-passcode')) return askCode(runCounts);
+  const pk = pkOf(t, trav), outfits = {};
+  for(const d of dayList(t)){ const o = (pk.outfits||{})[d.key]; if(hasOutfit(o)) outfits['day ' + d.n] = o; }
+  if(!Object.keys(outfits).length){ toast('Plan at least one day of outfits first.'); return; }
+  S.counting = true; render();
+  try {
+    const res = await callClaude({mode:'counts', trip:tripCtx(t), traveler:{name:trav.name, kind:trav.kind}, days:claudeDays(t), laundry:pk.laundry || '', items:claudeItems(t, trav), outfits});
+    S.counting = false;
+    if(!res.ok){ render(); if(res.status === 401) return askCode(runCounts); toast(res.error); return; }
+    await packWrite(t, trav, {counts:res.data.counts || [], countsStale:false});
+    toast(`Packing counts updated for ${trav.name}`);
+  } catch(e){ S.counting = false; render(); toast(navigator.onLine === false ? 'You’re offline. Connect and try again.' : IMP_ERRORS.claude_unreachable); }
+}
+sheetRoot.addEventListener('click', e => {
+  if(!(S.ofi || S.ofEdit || S.ofCode)) return;
+  if(e.target.matches('[data-of-scrim]') && !(S.ofi && S.ofi.stage === 'loading')) return closeSheet();
+  const a = e.target.closest('[data-of]'); if(!a) return;
+  const act = a.dataset.of;
+  if(act === 'close') return closeSheet();
+  if(act === 'back' && S.ofi){ S.ofi.stage = 'input'; S.ofi.error = ''; renderOfPaste(); return; }
+  if(act === 'clear-file' && S.ofi){ S.ofi.text = document.getElementById('ofText')?.value || ''; S.ofi.file = null; S.ofi.fileName = ''; renderOfPaste(); }
+});
+sheetRoot.addEventListener('change', e => {
+  const I = S.ofi, el = e.target;
+  if(I && el.id === 'ofFile' && el.files && el.files[0]){ I.text = document.getElementById('ofText')?.value || ''; I.file = el.files[0]; I.fileName = el.files[0].name || 'Photo'; I.error = ''; renderOfPaste(); }
+});
+sheetRoot.addEventListener('submit', e => {
+  const f = e.target; if(!f.matches('[data-of-form]')) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const kind = f.dataset.ofForm;
+  if(kind === 'paste'){ if(S.ofi.stage === 'input') runOfPaste(); else if(S.ofi.stage === 'review') applyOfPaste(); return; }
+  if(kind === 'code'){ const c = (document.getElementById('ofCode2')?.value || '').trim(); if(!c) return; lsSet('mctrips-passcode', c); const then = S.ofCode.then; closeSheet(); then(); return; }
+  if(kind === 'day'){
+    const t = trip(), trav = currentTrav(t), key = S.ofEdit.key, o = {};
+    OF_FIELDS.forEach(([k]) => o[k] = (document.getElementById('of-'+k)?.value || '').trim());
+    const had = Array.isArray(pkOf(t, trav).counts) && pkOf(t, trav).counts.length;
+    packWrite(t, trav, {outfits:{[key]:o}, countsStale: !!had}).then(() => toast('Saved')).catch(()=>{});
+    closeSheet();
+  }
 }, true);
 
 /* ---------- share, backup, restore ---------- */
