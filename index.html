@@ -580,6 +580,7 @@ function renderBuilder(){
       ${hasTrips ? `<div><button class="linkbtn" data-act="wiz-cancel">‹ Back to my trips</button></div>` : ''}
       <h1>Plan a trip ${SUITS}</h1>
       <p>Pick the basics. The app sets up the trip summary, a daily schedule and a packing list for each person.</p>
+      <div><button type="button" class="btn small" data-act="share-app">${ic('suitcase')}Send the app to family</button></div>
     </div>
     <section class="q"><h3>${ic('link')}Someone sent you a trip?</h3>
       ${pasteLinkForm('pasteLinkPlan')}
@@ -816,7 +817,8 @@ function renderSetup(t){
     <h3>${ic('link')}Share & back up</h3>
     <p class="note" style="margin:0">Trips are saved on this phone. Send this trip as a link: tapping it opens the trip in the app. Send a new link after you change plans; their packing checkmarks stay.</p>
     <div class="formrow">
-      <button type="button" class="btn small primary" data-act="export-trip">Send this trip</button>
+      <button type="button" class="btn small primary" data-act="export-trip">${ic('link')}Send this trip</button>
+      <button type="button" class="btn small" data-act="share-app">${ic('suitcase')}Send the app</button>
       <button type="button" class="btn small" data-act="export-all">Back up all trips</button>
       <label class="btn small" for="importFile" style="cursor:pointer">Open a backup file</label>
     </div>
@@ -1027,6 +1029,7 @@ app.addEventListener('click', e => {
     const fresh = genDays({...tg, nights:clampNights(t.nights)});
     write(S.store.setDoc('trips/'+t.id, Object.assign(clone(S.trips[t.id]), {days:fresh}))).then(() => toast('Summary rebuilt')).catch(()=>{}); render(); return; }
   if(act === 'export-trip') return exportTrip();
+  if(act === 'share-app') return shareApp();
   if(act === 'copy-link' && S.linkBanner){ copyText(S.linkBanner.url).then(ok => toast(ok ? 'Trip link copied' : 'Couldn’t copy. Press and hold the address bar to copy it.')); return; }
   if(act === 'hide-banner'){ S.linkBanner = null; render(); return; }
   if(act === 'dup-trip'){
@@ -1525,6 +1528,13 @@ async function copyText(text){
   try { await navigator.clipboard.writeText(text); return true; } catch(e){}
   try { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly',''); ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch(e){ return false; }
+}
+async function shareApp(){
+  const url = location.origin + location.pathname;
+  const text = 'Here’s our family Trips app. Open the link in Safari, then tap Share → Add to Home Screen. It plans trips, schedules, outfits and packing lists.';
+  try { if(navigator.share){ await navigator.share({title:'Trips', text, url}); return; } }
+  catch(e){ if(e && e.name === 'AbortError') return; }
+  toast(await copyText(url) ? 'App link copied. Paste it into a text or email.' : 'Couldn’t copy the link on this device.');
 }
 async function exportTrip(){
   const t = trip(); if(!t) return;
